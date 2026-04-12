@@ -1,0 +1,30 @@
+# IDEs
+.vscode
+.idea
+
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+.direnv
+
+# Datapases & Sources
+*.csv
+*.csv.gz
+*.db
+*.duckdb
+*.dcm
+*.parquet
+*.jpg
+*.sqlite
+
+
+image_files.txt
