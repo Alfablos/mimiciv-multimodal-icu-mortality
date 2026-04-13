@@ -13,6 +13,13 @@ General rules:
 * We're not considering admission diagnosis, both because they're sometimes added later and because of human error
 
 
+== Architecture
+The model is a composite neural network. It's made up by:
+
+* a **visual encoder**, whose job is to output a vector encoding of the patient conditions only based on chest X-Ray data.
+* a **tabular encoder**, which encodes the patient conditions based on all the other features (vitals and lab values).
+* a **fusion** model, which will have to learn to use these encodings to predict our label.
+
 
 == Limitations
 
