@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, Tensor
 import torchvision.models as visionmodels
 from torchvision.models import DenseNet
 
@@ -24,15 +24,14 @@ class Xencoder(nn.Module):
             nn.Linear(in_features=512, out_features=256) # encoding vector
         )
         
-    def forward(self, x):
-        x = self.backbone(x)
-        yh = self.head(x)
+    def forward(self, x) -> Tensor:
+        x: Tensor = self.backbone(x)
+        yh: Tensor = self.head(x)
         return yh
 
 
 if __name__ == '__main__':
     enc = Xencoder().to('cuda')
     img_batch = torch.randn(size=(5, 3, 512, 512), device='cuda', dtype=torch.float32)
-    print(f'Input: {img_batch.shape}')
     output = enc(img_batch)
-    print(f'Output: {output.shape} on {output.device}')
+    assert output.shape == (5, 256) # (batch_size, 256)
