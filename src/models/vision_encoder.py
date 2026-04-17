@@ -3,6 +3,7 @@ from torch import nn, Tensor
 import torchvision.models as visionmodels
 from torchvision.models import DenseNet
 
+DEFAULT_WEIGHTS = visionmodels.DenseNet121_Weights.DEFAULT
 
 class Xencoder(nn.Module):
     def __init__(self, dropout=0.3):
