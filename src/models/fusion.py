@@ -1,10 +1,8 @@
 import torch
 from torch import nn
 
-
-
-from vision_encoder import Xencoder
-from tabular_encoder import TabularEncoder
+from .vision_encoder import Xencoder
+from .tabular_encoder import TabularEncoder
 
 
 class Fusion(nn.Module):
