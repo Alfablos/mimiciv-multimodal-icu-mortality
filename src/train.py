@@ -30,9 +30,9 @@ def train(
 
             optimizer.zero_grad()
             preds = model(images, tabs)
-            loss = loss_fn(preds, labels).item()
-            print(f'Epoch {epoch} train loss:', loss)
+            loss = loss_fn(preds, labels)
             loss.backward()
+            print(f'Epoch {epoch} train loss:', loss.item())
             optimizer.step()
 
         model.eval()
