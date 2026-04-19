@@ -26,5 +26,8 @@ wheels/
 *.jpg
 *.sqlite
 
+# mlflow
+mlruns
 
+# Other
 image_files.txt

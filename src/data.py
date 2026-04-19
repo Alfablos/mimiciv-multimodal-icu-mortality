@@ -15,6 +15,9 @@ import image
 
 class MIMICReduced(Dataset):
     gpu_transforms = transformsV2.Compose([
+        # --- moved from CPU to speed things up
+        transformsV2.ToImage(),
+        # ---
         transformsV2.ToDtype(torch.float32, scale=True),
         transformsV2.Normalize(
             mean=vision_encoder.DEFAULT_WEIGHTS.transforms().mean,
@@ -28,16 +31,23 @@ class MIMICReduced(Dataset):
             images_extension: str = 'dcm',
             label_column: str = 'hospital_expire_flag',
             debug: bool = False,
+            limit: float | None = None,
             cpu_transforms = transformsV2.Compose([
                 image.PadToSquare(),
-                transformsV2.Resize((512, 512), antialias=True),
-                transformsV2.ToImage()
+                transformsV2.Resize((512, 512), antialias=True), # cannot resize on GPU
+                # transformsV2.ToImage()
             ])
     ):
         super().__init__()
         if not images_extension.lower().lstrip('.') in ['jpg', 'dcm', 'dicom']:
             raise ValueError(f'Extension {images_extension} is not supported.')
 
+        if limit and not 0.0 < limit <= 1.0:
+            raise ValueError('Invalid value for limit:', limit)
+        elif limit:
+            df = df.sample(frac=limit, random_state=42).reset_index(drop=True)
+
+        self.debug = debug
         self.transforms = cpu_transforms
         self.y: Tensor = torch.tensor(df[label_column].values, dtype=torch.float32)
         self.images_extension = images_extension.rstrip('/').lower()
@@ -77,6 +87,7 @@ class MIMICReduced(Dataset):
             # pixels = (pixels - min(pixels)) / (max(pixels) - min(pixels) + 1e-8)
             # print(data.PhotochromaticInterpretation)
             # print(pixels.shape)
+            image = torch.tensor([], dtype=torch.float32)
             raise NotImplementedError('Not yet implemented')
 
         else: # jpg
@@ -87,7 +98,6 @@ class MIMICReduced(Dataset):
         image = self.transforms(image)
         x = self.X[i]
         y = self.y[i]
-
         return image, x, y
 
 

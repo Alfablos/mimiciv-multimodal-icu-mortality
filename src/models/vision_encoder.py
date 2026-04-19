@@ -32,8 +32,8 @@ class Xencoder(nn.Module):
         
     def forward(self, x) -> Tensor:
         x: Tensor = self.backbone(x)
-        yh: Tensor = self.head(x)
-        return yh
+        return  self.head(x)
+
 
 
 if __name__ == '__main__':
