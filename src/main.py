@@ -12,7 +12,7 @@ if __name__ == '__main__':
         df=pd.read_csv('./ds_train.csv'),
         label_column='hospital_expire_flag',
         images_extension='jpg',
-        images_base_dir='../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files',
+        images_base_dir='../mimic-cxr/physionet.org/files/mimic-cxr-jpg/2.1.0/files',
         debug=True
     )
 

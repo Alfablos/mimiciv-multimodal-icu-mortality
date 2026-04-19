@@ -6,14 +6,19 @@ from torchvision.models import DenseNet
 DEFAULT_WEIGHTS = visionmodels.DenseNet121_Weights.DEFAULT
 
 class Xencoder(nn.Module):
-    def __init__(self, dropout=0.3):
-        super(Xencoder, self).__init__()
+    def __init__(self, encoding_vector_dims, frozen_backbone, dropout):
+        super().__init__()
         
         self.backbone: DenseNet = visionmodels.densenet121(weights=visionmodels.DenseNet121_Weights.DEFAULT)
 
-        for name, param in self.backbone.named_parameters():
-            if "denseblock4" not in name and 'norm5' not in name and 'classifier' not in name:
-                param.requires_grad = False
+        if frozen_backbone is None:
+            raise ValueError('A value for `frozen_backbone` MUST be specified for the X-Ray encoder.')
+
+        if frozen_backbone:
+            for name, param in self.backbone.named_parameters():
+                if "denseblock4" not in name and 'norm5' not in name and 'classifier' not in name:
+                    param.requires_grad = False
+
         self.backbone.classifier = nn.Identity()
 
 
@@ -22,7 +27,7 @@ class Xencoder(nn.Module):
             nn.ReLU(),
             nn.Dropout(p=dropout),
             nn.BatchNorm1d(512),
-            nn.Linear(in_features=512, out_features=256) # encoding vector
+            nn.Linear(in_features=512, out_features=encoding_vector_dims) # encoding vector
         )
         
     def forward(self, x) -> Tensor:

@@ -233,6 +233,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pip" },
     { name = "pydicom" },
+    { name = "pylibjpeg" },
     { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "torch" },
@@ -247,6 +248,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pip", specifier = ">=26.0.1" },
     { name = "pydicom", specifier = ">=3.0.2" },
+    { name = "pylibjpeg", specifier = ">=2.1.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "torch", specifier = ">=2.11.0" },
@@ -1117,6 +1119,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
+]
+
+[[package]]
+name = "pylibjpeg"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/39/51c543a27592f3e9a92a3769d4cb1ef675488b79a90fef56af9071358b07/pylibjpeg-2.1.0.tar.gz", hash = "sha256:2decda24982394533f16f1c6a17a6242f3391b95f69fac56c6a598a6b1362105", size = 22074, upload-time = "2025-09-01T23:08:23.662Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/31/86c111e81c113e74ac1b0afde27755088b2db394579370c893d252d9615a/pylibjpeg-2.1.0-py3-none-any.whl", hash = "sha256:25df9496a69e64e98c887fddee12a1271e275b5f74ba804f9bf98a08bb80993e", size = 25472, upload-time = "2025-09-01T23:08:22.28Z" },
 ]
 
 [[package]]

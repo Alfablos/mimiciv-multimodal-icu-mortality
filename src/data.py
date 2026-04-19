@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pydicom
+import pylibjpeg # decompression backend for dicom pixel data #TODO
 
 import torch
 from torch import Tensor
@@ -9,14 +10,15 @@ from torchvision.transforms import v2 as transformsV2
 import torchvision.io as tvio
 
 from models import vision_encoder
+import image
 
 
 class MIMICReduced(Dataset):
     gpu_transforms = transformsV2.Compose([
         transformsV2.ToDtype(torch.float32, scale=True),
         transformsV2.Normalize(
-            mean=vision_encoder.DEFAULT_WEIGHTS.meta['mean'],
-            std=vision_encoder.DEFAULT_WEIGHTS.meta['std']
+            mean=vision_encoder.DEFAULT_WEIGHTS.transforms().mean,
+            std=vision_encoder.DEFAULT_WEIGHTS.transforms().std
         )])
 
     def __init__(
@@ -27,6 +29,7 @@ class MIMICReduced(Dataset):
             label_column: str = 'hospital_expire_flag',
             debug: bool = False,
             cpu_transforms = transformsV2.Compose([
+                image.PadToSquare(),
                 transformsV2.Resize((512, 512), antialias=True),
                 transformsV2.ToImage()
             ])
@@ -64,15 +67,23 @@ class MIMICReduced(Dataset):
         if self.images_extension == 'dcm' or self.images_extension == 'dicom':
             data = pydicom.dcmread(image_path)
             pixels = data.pixel_array
-            # minmax normalization to reduce peaks of 12-16 bit dicom image
-            pixels = (pixels - min(pixels)) / (max(pixels) - min(pixels) + 1e-8)
-            print(data.PhotochromaticInterpretation)
-            print(pixels.shape)
+            print('', data.file_meta.TransferSyntaxUID)
+            
+            # 1. Decompress ACCORDING TO PYDICOM DOCS? pylibjpeg is available
+            # 2. Apply VOI LUTs (Value of Interest Look-Up Tables) to standardize pixel values
+            #    across vendors #TODO
+            
+            # # minmax normalization to reduce peaks of 12-16 bit dicom image
+            # pixels = (pixels - min(pixels)) / (max(pixels) - min(pixels) + 1e-8)
+            # print(data.PhotochromaticInterpretation)
+            # print(pixels.shape)
             raise NotImplementedError('Not yet implemented')
 
         else: # jpg
             image = tvio.read_image(image_path, mode=tvio.ImageReadMode.RGB)
 
+
+        # check if the image needs padding to have a 1:1 ration before resize
         image = self.transforms(image)
         x = self.X[i]
         y = self.y[i]
@@ -88,6 +99,7 @@ if __name__ == '__main__':
         images_base_dir='../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files'
     )
 
-    example, label = train_ds[3]
+    img, example, label = train_ds[0]
+    tvio.write_jpeg(img, 'debug.jpg')
     assert example.shape.numel() == 34, 'Wrong shape for training example'
     assert label.shape.numel() == 1, 'Wrong shape for label'
