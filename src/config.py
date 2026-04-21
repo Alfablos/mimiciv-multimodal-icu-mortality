@@ -8,6 +8,9 @@ train_csv = '../ds_train.csv'
 val_csv = '../ds_val.csv'
 test_csv = '../ds_test.csv'
 
+image_base_dir = '../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files'
+image_extension = 'jpg'
+
 dataset_shuffle = True
 num_workers = (cpu_count() // 2) - 2
 

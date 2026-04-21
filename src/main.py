@@ -10,18 +10,25 @@ import mlflow
 import mlflow.pytorch
 
 from models.vision_encoder import Xencoder
+from models.visualization import trace_activations
 from data import MIMICReduced
 from config import (
     loss_pos_weight,
     dataset_shuffle,
     num_workers,
-    hyperparameters
+    hyperparameters,
+    image_base_dir,
+    image_extension
 )
 from models.fusion import Fusion
 from train import train
 
 
+
 if __name__ == '__main__':
+    trace_activations()
+    exit(0)
+
     mlflow.set_experiment('multimodal ICU mortality')
     mlflow.config.enable_system_metrics_logging()
     mlflow.config.set_system_metrics_sampling_interval(1)
@@ -34,8 +41,8 @@ if __name__ == '__main__':
         train_ds = MIMICReduced(
             df=pd.read_csv('./ds_train.csv'),
             label_column='hospital_expire_flag',
-            images_extension='jpg',
-            images_base_dir='../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files',
+            images_extension=image_extension,
+            images_base_dir=image_base_dir,
             debug=True,
             limit=hyperparameters['train_limit']
         )

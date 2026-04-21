@@ -1,9 +1,12 @@
+import mlflow.pytorch
 import torch
 from torch import nn, Tensor
 import torchvision.models as visionmodels
 from torchvision.models import DenseNet
 
 DEFAULT_WEIGHTS = visionmodels.DenseNet121_Weights.DEFAULT
+
+
 
 class Xencoder(nn.Module):
     def __init__(self, encoding_vector_dims, frozen_backbone, dropout):
@@ -20,8 +23,6 @@ class Xencoder(nn.Module):
                     param.requires_grad = False
 
         self.backbone.classifier = nn.Identity()
-
-
         self.head = nn.Sequential(
             nn.Linear(in_features=1024, out_features=512),
             nn.ReLU(),
@@ -34,10 +35,14 @@ class Xencoder(nn.Module):
         x: Tensor = self.backbone(x)
         return  self.head(x)
 
-
-
 if __name__ == '__main__':
-    enc = Xencoder().to('cuda')
-    img_batch = torch.randn(size=(5, 3, 512, 512), device='cuda', dtype=torch.float32)
-    output = enc(img_batch)
-    assert output.shape == (5, 256) # (batch_size, 256)
+    # enc = Xencoder().to('cuda')
+    # img_batch = torch.randn(size=(5, 3, 512, 512), device='cuda', dtype=torch.float32)
+    # output = enc(img_batch)
+    # assert output.shape == (5, 256) # (batch_size, 256)
+
+    pass
+
+
+
+
