@@ -34,6 +34,9 @@ class Xencoder(nn.Module):
     def forward(self, x) -> Tensor:
         x: Tensor = self.backbone(x)
         return  self.head(x)
+        
+    def gradcam_layer(self):
+        return self.backbone.features.denseblock4
 
 if __name__ == '__main__':
     # enc = Xencoder().to('cuda')
