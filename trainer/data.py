@@ -27,6 +27,7 @@ class MIMICReduced(Dataset):
     def __init__(
             self,
             df: pd.DataFrame,
+            dataset_stats: dict,
             images_base_dir: str,
             images_extension: str = 'dcm',
             label_column: str = 'hospital_expire_flag',
@@ -68,6 +69,9 @@ class MIMICReduced(Dataset):
         self.X: Tensor = torch.tensor(features_df.values, dtype=torch.float32)
         self.features: list[str] = features_df.columns.tolist()
 
+        self.mean = torch.tensor(dataset_stats['mean'][col] for col in dataset_stats['mean'].keys())
+        self.std = torch.tensor(dataset_stats['std'][col] for col in dataset_stats['std'].keys())
+
     def __len__(self):
         return len(self.y)
 
@@ -96,7 +100,7 @@ class MIMICReduced(Dataset):
 
         # check if the image needs padding to have a 1:1 ration before resize
         image = self.transforms(image)
-        x = self.X[i]
+        x = (self.X[i] / self.mean) / (self.std + 1e-8)
         y = self.y[i]
         return image, x, y
 

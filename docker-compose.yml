@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mmim-trainer:latest
+    image: registry.antoniogalanti.com/mmim/mmim:0.1                                                                                                                                                                                                     0
     init: true
     restart: "no"
     deploy:
@@ -33,6 +33,8 @@ services:
       DATASET_IMAGES_DIR: ${DATASET_IMAGES_DIR:-mimic-cxr-jpg}
       # jpg or dcm (`.dcm` and `.jpg` are also valid)
       DATASET_IMAGES_EXTENSION: ${DATASET_IMAGES_EXTENSION:-jpg}
+      # Location of the JSON file containing the dataset stats (namely mean and std)
+      DATASET_STATS_FILE: ${DATASET_STATS_FILE:-/app/dataset/stats.json}
       # URI to MLFlow server
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://host.docker.internal:5000}
 
@@ -45,6 +47,7 @@ services:
     volumes:
       - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
       - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
+      - ./dataset/stats.json:/app/dataset/stats.json
       - ./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files:/app/dataset/mimic-cxr-jpg
     extra_hosts:
       - "host.docker.internal:host-gateway"

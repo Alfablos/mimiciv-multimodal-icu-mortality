@@ -31,6 +31,7 @@ loss_pos_weight = float_from_env('MMIM_LOSS_POS_WEIGHT', 5160 / 936) # positive 
 
 train_csv = os.getenv('TRAINING_DATASET_FILE', '../dataset/ds_train.csv')
 val_csv = os.getenv('VALIDATION_DATASET_FILE', '../dataset/ds_val.csv')
+dataset_stats_file = os.getenv('DATASET_STATS_FILE', '../dataset/stats.json')
 
 image_base_dir = os.getenv('DATASET_IMAGES_BASEDIR', '../dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files')
 image_extension = os.getenv('DATASET_IMAGES_EXTENSION', 'dcm')

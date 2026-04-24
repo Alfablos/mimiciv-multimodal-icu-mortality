@@ -28,7 +28,9 @@ wheels/
 
 # mlflow
 mlruns
-*.db
+mlartifacts
+
 
 # Other
 image_files.txt
+dataset/*

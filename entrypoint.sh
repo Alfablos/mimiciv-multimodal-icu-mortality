@@ -10,18 +10,26 @@ DATASET_IMAGES_EXTENSION=${DATASET_IMAGES_EXTENSION:-dcm}
 # Set DATASET_ENDPOINT_URL
 DATASET_TRAINING_KEY=${DATASET_TRAINING_KEY:-"ds_train.csv"}
 DATASET_VALIDATION_KEY=${DATASET_VALIDATION_KEY:-"ds_val.csv"}
+DATASET_STATS_KEY=${DATASET_STATS_KEY:-"stats.json"}
 DATASET_IMAGES_DIR=${DATASET_IMAGES_DIR:-"mimic-cxr-jpg"}
 DATASET_TRAINING_FILENAME=${DATASET_TRAINING_FILENAME:-$(basename "$DATASET_TRAINING_KEY")}
 DATASET_VALIDATION_FILENAME=${DATASET_VALIDATION_FILENAME:-$(basename "$DATASET_VALIDATION_KEY")}
+DATASET_STATS_FILENAME=${DATASET_STATS_FILENAME:-$(basename "$DATASET_STATS_KEY")}
 export DATASET_LOCAL_DIR=${DATASET_LOCAL_DIR:-/app/dataset}
 export BASE_DIR=${BASE_DIR:-/app}
+# key: path in the bucket
+# filename: only the basename
+# file: full local path
+# no export: for this script
+# export: for the trainer
 
 # Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
 
 # if train and validation datasets exist no download
-export TRAINING_DATASET_FILE=${TRAINING_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_TRAINING_FILENAME}"}
-export VALIDATION_DATASET_FILE=${VALIDATION_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_VALIDATION_FILENAME}"}
-export DATASET_IMAGES_BASEDIR=${DATASET_IMAGES_BASEDIR:-"${DATASET_LOCAL_DIR}/${DATASET_IMAGES_DIR}"}
+export TRAINING_DATASET_FILE=${TRAINING_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_TRAINING_FILENAME}"}  # defaults to: /app/dataset/ds_train.csv
+export VALIDATION_DATASET_FILE=${VALIDATION_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_VALIDATION_FILENAME}"}  # defaults to: /app/dataset/ds_val.csv
+export DATASET_STATS_FILE=${VALIDATION_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_STATS_FILENAME}"}  # defaults to: /app/dataset/stats.json
+export DATASET_IMAGES_BASEDIR=${DATASET_IMAGES_BASEDIR:-"${DATASET_LOCAL_DIR}/${DATASET_IMAGES_DIR}"}   # defaults to: /app/dataset/mimic-cxr-jpg
 
 echo "Creating datasets directory..."
 train_ds_dir=$(dirname "$TRAINING_DATASET_FILE"); { [[ ! -d "$train_ds_dir" ]] && [[ ! -L "$train_ds_dir" ]] } && mkdir -p $(dirname "$TRAINING_DATASET_FILE")
@@ -36,6 +44,10 @@ echo "Creating images directory ${DATASET_IMAGES_BASEDIR}..."
 [[ ! -e "$VALIDATION_DATASET_FILE" ]] \
   && echo "Downloading VALIDATION dataset file..." \
   && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://${DATASET_BUCKET}/${DATASET_VALIDATION_KEY} ${VALIDATION_DATASET_FILE}
+
+[[ ! -e "$DATASET_STATS_FILE" ]] \
+  && echo "Downloading dataset statistics..." \
+  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://${DATASET_BUCKET}/${DATASET_STATS_KEY} ${DATASET_STATS_FILE}
 
 if [ -z "$(ls -A "$DATASET_IMAGES_BASEDIR" 2>/dev/null)" ]; then
   echo "Downloading dataset images, this may take a while..."

@@ -1,4 +1,5 @@
 import os
+import json
 
 import pandas as pd
 import torch
@@ -10,6 +11,7 @@ import mlflow.pytorch
 from data import MIMICReduced
 from config import (
     loss_pos_weight,
+    dataset_stats_file,
     dataset_shuffle,
     num_workers,
     hyperparameters,
@@ -27,6 +29,8 @@ if __name__ == '__main__':
     if hyperparameters['train_limit'] != 1.0:
         print(f'WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid.')
 
+    stats_file = open(dataset_stats_file, 'r')
+    ds_stats = json.load(stats_file)
 
     mlflow.set_experiment(os.getenv('MLFLOW_EXPERIMENT_NAME', 'Multimodal ICU mortality'))
     mlflow.config.enable_system_metrics_logging()
@@ -45,6 +49,7 @@ if __name__ == '__main__':
 
         train_ds = MIMICReduced(
             df=pd.read_csv(train_csv),
+            dataset_stats=ds_stats,
             label_column='hospital_expire_flag',
             images_extension=image_extension,
             images_base_dir=image_base_dir,
@@ -61,6 +66,7 @@ if __name__ == '__main__':
 
         val_ds = MIMICReduced(
             df=pd.read_csv(val_csv),
+            dataset_stats=ds_stats,
             label_column='hospital_expire_flag',
             images_extension=image_extension,
             images_base_dir=image_base_dir,
@@ -69,6 +75,9 @@ if __name__ == '__main__':
             # allowes me to iterate faster
             limit=hyperparameters['train_limit']
         )
+
+        stats_file.close()
+
         val_dl = DataLoader(
             pin_memory=True,
             dataset=val_ds,
@@ -76,6 +85,7 @@ if __name__ == '__main__':
             batch_size=hyperparameters['batch_size'],
             num_workers=num_workers
         )
+
 
         loss_fn = BCEWithLogitsLoss(
             # this tensor is still on the CPU

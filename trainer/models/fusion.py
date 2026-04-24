@@ -43,7 +43,7 @@ class Fusion(nn.Module):
         f_vec = torch.cat([v_vec, t_vec], dim=1) # !!!
         return self.class_head(f_vec)
     
-    def vision_encoder_gradcam_layer(self):
+    def gradcam_layer(self):
         return self.vision_encoder.gradcam_layer()
 
 
