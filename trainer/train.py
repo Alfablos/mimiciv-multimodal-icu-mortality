@@ -6,15 +6,45 @@ import mlflow
 import mlflow.pytorch
 
 import torch.cuda
-from torch import nn
+from torch import nn, Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from data import MIMICReduced
+from gradcam import grad_cam
+from models.fusion import Fusion
+
+
+def upload_gradcam(
+        images: Tensor,
+        tabs: Tensor,
+        model: Fusion,
+        epoch_n: int,
+        purpose: Literal['train', 'val']
+):
+    model_was_training = model.training
+    model.eval()
+    try: # if anything fails the model is back to training mode
+        for i in range(min(3, images.size(0))):
+            image_t = images[i:i + 1] # so it stays a 4D tensor
+            tab_t = tabs[i:i + 1]
+            fig = grad_cam(
+                model=model,
+                image_tensor=image_t,
+                tab_tensor=tab_t,
+                transform_images=False # they've already transformed by the trining loop!
+            )
+            mlflow.log_figure(
+                figure=fig,
+                artifact_file=f'gradcam/epoch_{epoch_n:03d}/{purpose}_{i}.png'
+            )
+    finally:
+        if model_was_training:
+            model.train()
 
 
 def train(
-        model: nn.Module,
+        model: Fusion,
         loss_fn: nn.Module,
         optimizer: Optimizer,
         epochs: int,
@@ -40,12 +70,20 @@ def train(
             loss = loss_fn(preds, labels)
             loss.backward()
 
+            optimizer.step() # must happen before to avoid zeroing the gradients
             if batch_n == len(train_loader) - 1:
-                print('Sending training loss to mlflow')
+                print('Sending training metrics and artifacts to mlflow')
                 mlflow.log_metric('train_loss', loss.item(), step=epoch)
 
+                upload_gradcam(
+                    images=images,
+                    tabs=tabs,
+                    model=model,
+                    epoch_n=epoch,
+                    purpose='train'
+                )
+
             print(f'Train epoch {epoch} batch {batch_n} of {len(train_loader)} | loss:', loss.item())
-            optimizer.step()
 
         # Only doing this on the validation set, the primary overfitting indicator
         # is the raw loss.
@@ -105,6 +143,15 @@ def evaluate(
             f"AUPRC: {metrics['AUPRC']}\n"
             f"Sensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n"
         )
+
+    upload_gradcam(
+        images=val_images,
+        tabs=val_tabs,
+        model=model,
+        epoch_n=epoch_n,
+        purpose='val'
+    )
+
 
 
 

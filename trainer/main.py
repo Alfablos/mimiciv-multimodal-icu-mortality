@@ -33,10 +33,10 @@ if __name__ == '__main__':
     mlflow.config.set_system_metrics_sampling_interval(1)
     mlflow.pytorch.autolog()
     with mlflow.start_run(
-        run_name='fusion_bs' + hyperparameters['batch_size']
-        + '_lr' + hyperparameters['learning_rate'] + '_epocs' + hyperparameters['epochs']
-        + '_dropout' + hyperparameters['dropout']
-        + ('_trainlimit' + hyperparameters['train_limit']) if hyperparameters['train_limit'] != 1.0 else ''
+        run_name='fusion_bs' + str(hyperparameters['batch_size'])
+        + '_lr' + str(hyperparameters['learning_rate']) + '_epocs' + str(hyperparameters['epochs'])
+        + '_dropout' + str(hyperparameters['dropout'])
+        + ('_trainlimit' + str(hyperparameters['train_limit'])) if hyperparameters['train_limit'] != 1.0 else ''
     ):
         mlflow.log_params(hyperparameters)
         model = Fusion(

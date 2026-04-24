@@ -34,11 +34,11 @@ services:
       # jpg or dcm (`.dcm` and `.jpg` are also valid)
       DATASET_IMAGES_EXTENSION: ${DATASET_IMAGES_EXTENSION:-jpg}
       # URI to MLFlow server
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-sqlite:///app/mlflow.db}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://host.docker.internal:5000}
 
       MMIM_BATCH_SIZE: ${MMIM_BATCH_SIZE:-32}
       MMIM_EPOCHS: ${MMIM_EPOCHS:-10}
-      MMIM_DROPOUT: ${MMIM_DROPOUT:-0.9}
+      MMIM_DROPOUT: ${MMIM_DROPOUT:-0.3}
       MMIM_LEARNING_RATE: ${MMIM_LEARNING_RATE:-0.0001}
       MMIM_TRAIN_LIMIT: ${MMIM_TRAIN_LIMIT:-1.0}
       MMIM_NUM_WORKERS: ${MMIM_NUM_WORKERS:-4}
@@ -46,4 +46,5 @@ services:
       - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
       - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
       - ./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files:/app/dataset/mimic-cxr-jpg
-      - ./mlruns:/app/mlruns
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
