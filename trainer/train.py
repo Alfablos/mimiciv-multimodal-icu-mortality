@@ -99,7 +99,12 @@ def evaluate(
         mlflow.log_metric('val_auroc', auroc, step=epoch_n)
         mlflow.log_metric('val_auprc', auprc, step=epoch_n)
         mlflow.log_metric('val_sens_at_95_spec', sens_at_95_spec, step=epoch_n)
-        print(f'Epoch {epoch_n} (VAL):\nAUROC: {metrics['AUROC']}\nAUPRC: {metrics['AUPRC']}\nSensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n')
+        print(
+            f"Epoch {epoch_n} (VAL):\n"
+            f"AUROC: {metrics['AUROC']}\n"
+            f"AUPRC: {metrics['AUPRC']}\n"
+            f"Sensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n"
+        )
 
 
 

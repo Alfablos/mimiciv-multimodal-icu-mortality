@@ -42,9 +42,11 @@
             packages = with pkgs; [
               python
               ty
+              pyright
               uv
               ruff
               duckdb
+              mlflow-server
             ];
 
             shellHook = ''

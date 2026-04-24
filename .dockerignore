@@ -1,0 +1,10 @@
+*
+!pyproject.toml
+!uv.lock
+!trainer/
+!trainer/**
+trainer/**/__pycache__/
+trainer/**/*.py[co]
+Dockerfile
+!entrypoint.sh
+

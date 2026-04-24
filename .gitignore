@@ -28,6 +28,7 @@ wheels/
 
 # mlflow
 mlruns
+*.db
 
 # Other
 image_files.txt

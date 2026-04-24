@@ -1,16 +1,12 @@
-from os import cpu_count
+import os
 
 import pandas as pd
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchvision.models import DenseNet
 from torch.nn import BCEWithLogitsLoss
-import mlflow
 import mlflow.pytorch
 
-from models.vision_encoder import Xencoder
-from models.visualization import trace_activations
 from data import MIMICReduced
 from config import (
     loss_pos_weight,
@@ -18,7 +14,9 @@ from config import (
     num_workers,
     hyperparameters,
     image_base_dir,
-    image_extension
+    image_extension,
+    train_csv,
+    val_csv
 )
 from models.fusion import Fusion
 from train import train
@@ -26,20 +24,27 @@ from train import train
 
 
 if __name__ == '__main__':
-    trace_activations()
-    exit(0)
+    if hyperparameters['train_limit'] != 1.0:
+        print(f'WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid.')
 
-    mlflow.set_experiment('multimodal ICU mortality')
+
+    mlflow.set_experiment(os.getenv('MLFLOW_EXPERIMENT_NAME', 'Multimodal ICU mortality'))
     mlflow.config.enable_system_metrics_logging()
     mlflow.config.set_system_metrics_sampling_interval(1)
-    with mlflow.start_run():
+    mlflow.pytorch.autolog()
+    with mlflow.start_run(
+        run_name='fusion_bs' + hyperparameters['batch_size']
+        + '_lr' + hyperparameters['learning_rate'] + '_epocs' + hyperparameters['epochs']
+        + '_dropout' + hyperparameters['dropout']
+        + ('_trainlimit' + hyperparameters['train_limit']) if hyperparameters['train_limit'] != 1.0 else ''
+    ):
         mlflow.log_params(hyperparameters)
         model = Fusion(
             dropout=hyperparameters['dropout']
         )
 
         train_ds = MIMICReduced(
-            df=pd.read_csv('./ds_train.csv'),
+            df=pd.read_csv(train_csv),
             label_column='hospital_expire_flag',
             images_extension=image_extension,
             images_base_dir=image_base_dir,
@@ -55,10 +60,10 @@ if __name__ == '__main__':
         )
 
         val_ds = MIMICReduced(
-            df=pd.read_csv('./ds_val.csv'),
+            df=pd.read_csv(val_csv),
             label_column='hospital_expire_flag',
-            images_extension='jpg',
-            images_base_dir='../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files',
+            images_extension=image_extension,
+            images_base_dir=image_base_dir,
             debug=True,
             # optional for the validation set as well but
             # allowes me to iterate faster

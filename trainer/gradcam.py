@@ -1,4 +1,5 @@
 import torch.nn.functional as F
+import torchvision.transforms.functional as VF
 from enum import Enum
 import torch
 from torch import Tensor, nn
@@ -54,7 +55,7 @@ def trace_activations() -> tuple[Tensor, Tensor, Tensor]:
         # allowes me to iterate faster
         limit=hyperparameters['train_limit']
     )
-    original_image, tab, _ = ds[0]
+    original_image, tab, _ = ds[10]
     tab, image = tab.to(device), original_image.to(device)
     tab = tab.unsqueeze(dim=0) # pytorch interprets as dim 0 the batch size. We go from [34] to [1, 34]
     image = MIMICReduced.gpu_transforms(image.unsqueeze(dim=0)) # batch of 1
@@ -75,6 +76,7 @@ if __name__ == '__main__':
     # Activations: A1...A1024
     # Gradients: dy/dA
     activations, gradients, original_image = trace_activations()
+    original_image = VF.to_pil_image(original_image)
     # Shape for both should now be (batch_size, C, H, W)
     # batch_size = 1 because we're only passing 1 image and unsqueezing the tensor
     # other dimensions are those of denseblock4 (Densenet: C=1024, H=16, W=16
@@ -103,16 +105,13 @@ if __name__ == '__main__':
     # If we want to overlay the images they have to have the same dims
     heat = F.interpolate(heat, size=(512, 512), mode='bilinear', align_corners=False)
     heat = heat.squeeze().cpu().numpy()
-    
-    original_image = original_image.cpu().numpy()
-    original_image = np.transpose(original_image, (1, 2, 0))
-    
-    # normalize
-    original_image = (original_image - np.min(original_image) / (np.max(original_image) + 1e-8))
-    
+    # and normalize the heatmap too
+    heat = ((heat - np.min(heat)) / (np.max(heat) + 1e-8))
+
+
     plt.figure(figsize=(10, 10))
     plt.imshow(original_image, cmap='gray')
-    plt.imshow(heat, cmap='jet', alpha=0.5)
+    plt.imshow(heat, cmap='jet', alpha=0.3)
     plt.axis('off')
     plt.savefig('./gradcam.png', bbox_inches='tight', pad_inches=0, dpi=300)
     

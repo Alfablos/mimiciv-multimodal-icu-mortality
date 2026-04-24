@@ -1,0 +1,49 @@
+services:
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mmim-trainer:latest
+    init: true
+    restart: "no"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=0
+              capabilities: [gpu]
+    shm_size: 8gb
+    working_dir: /app
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+
+      # Endpoint URL for the S3-compatible storage
+      DATASET_ENDPOINT_URL: ${DATASET_ENDPOINT_URL:-}
+      # S3-compatible storage bucket where datasets and images are stored
+      DATASET_BUCKET: ${DATASET_BUCKET:-mmim}
+      # The key of the train dataset csv file. E.g.: `mimic-iv/train.csv`
+      DATASET_TRAINING_KEY: ${DATASET_TRAINING_KEY:-ds_train.csv}
+      # The key for the validation dataset
+      DATASET_VALIDATION_KEY: ${DATASET_VALIDATION_KEY:-ds_val.csv}
+      # The prefix for the images "dir" in the S3 bucket
+      DATASET_IMAGES_DIR: ${DATASET_IMAGES_DIR:-mimic-cxr-jpg}
+      # jpg or dcm (`.dcm` and `.jpg` are also valid)
+      DATASET_IMAGES_EXTENSION: ${DATASET_IMAGES_EXTENSION:-jpg}
+      # URI to MLFlow server
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-sqlite:///app/mlflow.db}
+
+      MMIM_BATCH_SIZE: ${MMIM_BATCH_SIZE:-32}
+      MMIM_EPOCHS: ${MMIM_EPOCHS:-10}
+      MMIM_DROPOUT: ${MMIM_DROPOUT:-0.9}
+      MMIM_LEARNING_RATE: ${MMIM_LEARNING_RATE:-0.0001}
+      MMIM_TRAIN_LIMIT: ${MMIM_TRAIN_LIMIT:-1.0}
+      MMIM_NUM_WORKERS: ${MMIM_NUM_WORKERS:-4}
+    volumes:
+      - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
+      - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
+      - ./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files:/app/dataset/mimic-cxr-jpg
+      - ./mlruns:/app/mlruns
