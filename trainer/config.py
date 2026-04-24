@@ -27,7 +27,7 @@ from config_utils import (
 # needed due to heavily imbalanced label
 # This is a dataset property, do NOT modify unless you know what you're doing!
 # Be VERY CAREFUL when modifying `train_limit` as it really can impact this value!
-loss_pos_weight = float_from_env('MMIM_LOSS_POS_WEIGHT', 936 / 6096)
+loss_pos_weight = float_from_env('MMIM_LOSS_POS_WEIGHT', 5160 / 936) # positive weight is negatives / positives = (6096 - 936) / 936 !!
 
 train_csv = os.getenv('TRAINING_DATASET_FILE', '../dataset/ds_train.csv')
 val_csv = os.getenv('VALIDATION_DATASET_FILE', '../dataset/ds_val.csv')
