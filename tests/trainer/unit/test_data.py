@@ -1,7 +1,7 @@
+from pytest import raises
+import torch
 from typing import Any
 import pandas as pd
-
-from pytest import raises
 
 from trainer.data import MIMICReduced
 
@@ -184,13 +184,13 @@ data = [
 ]
 
 
-def init_test_ds(**kwargs):
+def init_test_ds(**kwargs) -> MIMICReduced:
     args: dict[str, Any] = {
         "df": pd.DataFrame(data),
         "dataset_stats": stats,
         "label_column": "hospital_expire_flag",
         "images_extension": "jpg",
-        "images_base_dir": "./images",
+        "images_base_dir": "./tests/trainer/unit/images",
         "limit": None,
     }
     final_args = {**args, **kwargs}
@@ -202,27 +202,30 @@ def test_ds_has_right_features():
     assert test_ds.features == current_features
 
 
-def test_allowed_image_extensions_are_ok():
+def test_ds_allowed_image_extensions_are_ok():
     for allowed_ext in ["jpg", ".jpg", "dcm", ".dcm", "dicom", ".dicom"]:
         _ = init_test_ds(images_extension=allowed_ext)
 
 
-def test_wrong_image_extensions_are_rejected():
+def test_ds_wrong_image_extensions_are_rejected():
     with raises(ValueError, match="Extension .+ is not supported."):
         init_test_ds(images_extension="unallowed")
         init_test_ds(images_extension=".unallowed")
         init_test_ds(images_extension="#? unallowed")
 
 
-# def test_other():
-#     train_ds = MIMICReduced(
-#         df=pd.DataFrame(data),
-#         label_column="hospital_expire_flag",
-#         images_extension="jpg",
-#         images_base_dir="../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files",
-#         dataset_stats=stats
-#     )
+def test_ds_returns_images_correctly():
+    ds = init_test_ds()
+    paths = [
+        "./tests/trainer/unit/images/p11/p11111111/s3030303/0.jpg",
+        "./tests/trainer/unit/images/p22/p22222222/s8080808/1.jpg",
+    ]
 
-#     img, example, label = train_ds[0]
-#     assert example.shape.numel() == 34, "Wrong shape for training example"
-#     assert label.shape.numel() == 1, "Wrong shape for label"
+    for i, path in enumerate(paths):
+        img, example, label = ds[i]
+        assert example.shape.numel() == 34, "Wrong shape for training example"
+        assert label.shape.numel() == 1, "Wrong shape for label"
+        assert img.shape == torch.Size([3, 512, 512]), (
+            f"Wrong shape for image: {img.shape}. Should be [3, 512, 512]"
+        )
+        assert ds.image_paths[i] == path
