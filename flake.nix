@@ -47,6 +47,7 @@
               ruff
               duckdb
               mlflow-server
+              pre-commit
             ];
 
             shellHook = ''
