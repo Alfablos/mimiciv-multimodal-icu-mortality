@@ -48,11 +48,11 @@ echo "Creating images directory ${DATASET_IMAGES_BASEDIR}..."
 
 [[ ! -e "$DATASET_STATS_FILE" ]] \
   && echo "Downloading dataset statistics..." \
-  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://"${DATASET_BUCKET}"/"${DATASET_STATS_KEY}" "${DATASET_STATS_FILE}"
+  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp "s3://${DATASET_BUCKET}/${DATASET_STATS_KEY}" "${DATASET_STATS_FILE}"
 
 if [ -z "$(ls -A "$DATASET_IMAGES_BASEDIR" 2>/dev/null)" ]; then
   echo "Downloading dataset images, this may take a while..."
-  aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" sync s3://"${DATASET_BUCKET}"/"${DATASET_IMAGES_DIR}" "${DATASET_IMAGES_BASEDIR}"
+  aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp --recursive "s3://${DATASET_BUCKET}/${DATASET_IMAGES_DIR}" "${DATASET_IMAGES_BASEDIR}"
 fi
 
 echo "<=== Ready to train! ===>"
