@@ -33,7 +33,10 @@
     in
     {
       devShells = forAllSystems (pkgs: {
-        default =
+        noCuda = self.devShells.${pkgs.stdenv.hostPlatform.system}.template false;
+        cuda = self.devShells.${pkgs.stdenv.hostPlatform.system}.template true;
+        default = self.devShells.${pkgs.stdenv.hostPlatform.system}.cuda;
+        template = cuda:
           let
             python = pkgs.${pythonPackage}.withPackages (pp: with pp; [
               pytest
@@ -55,7 +58,7 @@
               export PYTHONPATH="${python}/${python.sitePackages}"
               export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
               export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-              export LD_LIBRARY_PATH=${mkLibraryPath pkgs}:$LD_LIBRARY_PATH
+              export LD_LIBRARY_PATH=${if cuda then (mkLibraryPath pkgs) else ""}:$LD_LIBRARY_PATH
 
               if [[ ! -d ".venv" ]]; then
                 echo "Creating a virtual environment..."
