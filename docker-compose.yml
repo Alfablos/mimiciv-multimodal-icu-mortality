@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: registry.antoniogalanti.com/mmim/mmim:0.1                                                                                                                                                                                                     0
     init: true
     restart: "no"
     deploy:
@@ -17,9 +16,15 @@ services:
     shm_size: 8gb
     working_dir: /app
     environment:
+      # only needed if local files aren't found
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+
+      # URI to MLFlow server
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://host.docker.internal:5000}
+      MLFLOW_TRACKING_USERNAME: ${MLFLOW_TRACKING_USERNAME:-admin}
+      MLFLOW_TRACKING_PASSWORD: ${MLFLOW_TRACKING_PASSWORD:-password1234}
 
       # Endpoint URL for the S3-compatible storage
       DATASET_ENDPOINT_URL: ${DATASET_ENDPOINT_URL:-}
@@ -35,8 +40,6 @@ services:
       DATASET_IMAGES_EXTENSION: ${DATASET_IMAGES_EXTENSION:-jpg}
       # Location of the JSON file containing the dataset stats (namely mean and std)
       DATASET_STATS_FILE: ${DATASET_STATS_FILE:-/app/dataset/stats.json}
-      # URI to MLFlow server
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://host.docker.internal:5000}
 
       MMIM_BATCH_SIZE: ${MMIM_BATCH_SIZE:-32}
       MMIM_EPOCHS: ${MMIM_EPOCHS:-10}
