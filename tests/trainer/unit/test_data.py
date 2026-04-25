@@ -1,6 +1,8 @@
 from typing import Any
 import pandas as pd
 
+from pytest import raises
+
 from trainer.data import MIMICReduced
 
 current_features = [
@@ -201,12 +203,15 @@ def test_ds_has_right_features():
 
 
 def test_allowed_image_extensions_are_ok():
-    for allowed_ext in ["jpg", "dcm", "dicom"]:
+    for allowed_ext in ["jpg", ".jpg", "dcm", ".dcm", "dicom", ".dicom"]:
         _ = init_test_ds(images_extension=allowed_ext)
 
 
 def test_wrong_image_extensions_are_rejected():
-    init_test_ds(images_extension="unallowed")
+    with raises(ValueError, match="Extension .+ is not supported."):
+        init_test_ds(images_extension="unallowed")
+        init_test_ds(images_extension=".unallowed")
+        init_test_ds(images_extension="#? unallowed")
 
 
 # def test_other():
