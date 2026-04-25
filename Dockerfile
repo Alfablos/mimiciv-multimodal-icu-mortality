@@ -22,6 +22,7 @@ RUN groupadd --system trainer --gid 1000 \
 RUN apt update && apt install -y --no-install-recommends \
     curl \
     awscli \
+    git \
     && rm -rf /var/lib/apt/lists/* \
     && apt clean
 
