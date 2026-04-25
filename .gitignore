@@ -24,6 +24,7 @@ wheels/
 *.dcm
 *.parquet
 *.jpg
+!tests/trainer/unit/images/**/*.jpg
 *.sqlite
 
 # mlflow
