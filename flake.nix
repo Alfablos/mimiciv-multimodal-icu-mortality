@@ -52,6 +52,8 @@
               duckdb
               mlflow-server
               pre-commit
+              actionlint
+              shellcheck
             ];
 
             shellHook = ''
