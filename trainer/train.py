@@ -70,6 +70,10 @@ def train(
             images = MIMICReduced.gpu_transforms(images)
 
             optimizer.zero_grad()
+            # preds is called like that to provide a uniform interface
+            # but the model is applying no activation function, actually ouputting logits.
+            # the curremt loss function is BCEWithLogitsLoss
+            # Careful when changing the loss function
             preds = model(images, tabs)
             loss = loss_fn(preds, labels)
             loss.backward()
