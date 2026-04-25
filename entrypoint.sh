@@ -28,8 +28,9 @@ export BASE_DIR=${BASE_DIR:-/app}
 # if train and validation datasets exist no download
 export TRAINING_DATASET_FILE=${TRAINING_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_TRAINING_FILENAME}"}  # defaults to: /app/dataset/ds_train.csv
 export VALIDATION_DATASET_FILE=${VALIDATION_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_VALIDATION_FILENAME}"}  # defaults to: /app/dataset/ds_val.csv
-export DATASET_STATS_FILE=${VALIDATION_DATASET_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_STATS_FILENAME}"}  # defaults to: /app/dataset/stats.json
+export DATASET_STATS_FILE=${DATASET_STATS_FILE:-"${DATASET_LOCAL_DIR}/${DATASET_STATS_FILENAME}"}  # defaults to: /app/dataset/stats.json
 export DATASET_IMAGES_BASEDIR=${DATASET_IMAGES_BASEDIR:-"${DATASET_LOCAL_DIR}/${DATASET_IMAGES_DIR}"}   # defaults to: /app/dataset/mimic-cxr-jpg
+
 
 echo "Creating datasets directory..."
 train_ds_dir=$(dirname "$TRAINING_DATASET_FILE"); { [[ ! -d "$train_ds_dir" ]] && [[ ! -L "$train_ds_dir" ]] } && mkdir -p $(dirname "$TRAINING_DATASET_FILE")
