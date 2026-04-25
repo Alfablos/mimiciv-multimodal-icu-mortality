@@ -35,7 +35,8 @@
       devShells = forAllSystems (pkgs: {
         default =
           let
-            python = pkgs.${pythonPackage}.withPackages (pp: [
+            python = pkgs.${pythonPackage}.withPackages (pp: with pp; [
+              pytest
             ]);
           in
           pkgs.mkShell {

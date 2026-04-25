@@ -10,9 +10,9 @@ from torch import nn, Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from data import MIMICReduced
-from gradcam import grad_cam
-from models.fusion import Fusion
+from .data import MIMICReduced
+from .gradcam import grad_cam
+from .models.fusion import Fusion
 
 
 def upload_gradcam(
@@ -144,7 +144,7 @@ def evaluate(
         preds = torch.cat(preds).numpy()  # now flat
         labels = torch.cat(labels).numpy()
 
-        metrics = calculate_metrics(preds, labels)
+        metrics = get_metrics(preds, labels)
         auroc = metrics["AUROC"]
         auprc = metrics["AUPRC"]
         sens_at_95_spec = metrics["sens_at_95_spec"]
@@ -163,7 +163,7 @@ def evaluate(
     )
 
 
-def calculate_metrics(preds, labels):
+def get_metrics(preds, labels):
     auroc = roc_auc_score(y_true=labels, y_score=preds)
     auprc = average_precision_score(y_true=labels, y_score=preds)
     false_positive_rate, true_positive_rate, thresholds = roc_curve(

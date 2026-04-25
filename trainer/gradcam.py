@@ -8,9 +8,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.fusion import Fusion
-from data import MIMICReduced
-from config import image_extension, image_base_dir, hyperparameters
+from .models.fusion import Fusion
+from .data import MIMICReduced
+from .config import image_extension, image_base_dir, hyperparameters
 
 
 class Architecture(Enum):

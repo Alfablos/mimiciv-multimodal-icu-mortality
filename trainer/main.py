@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 from torch.nn import BCEWithLogitsLoss
 import mlflow.pytorch
 
-from data import MIMICReduced
-from config import (
+from .data import MIMICReduced
+from .config import (
     loss_pos_weight,
     dataset_stats_file,
     dataset_shuffle,
@@ -20,8 +20,8 @@ from config import (
     train_csv,
     val_csv,
 )
-from models.fusion import Fusion
-from train import train
+from .models.fusion import Fusion
+from .train import train
 
 
 if __name__ == "__main__":

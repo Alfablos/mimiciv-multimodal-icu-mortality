@@ -1,7 +1,8 @@
 from os import cpu_count
 import os
 
-from config_utils import int_from_env, float_from_env, bool_from_env
+
+from .config_utils import int_from_env, float_from_env, bool_from_env
 
 
 # Available environment variables:

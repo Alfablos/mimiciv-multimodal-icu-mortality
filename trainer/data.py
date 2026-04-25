@@ -8,8 +8,8 @@ from torch.utils.data import Dataset
 from torchvision.transforms import v2 as transformsV2
 import torchvision.io as tvio
 
-from models import vision_encoder
-import image
+from .models import vision_encoder
+from .transforms import PadToSquare
 
 
 class MIMICReduced(Dataset):
@@ -29,7 +29,7 @@ class MIMICReduced(Dataset):
     def __init__(
         self,
         df: pd.DataFrame,
-        dataset_stats: dict,
+        dataset_stats: dict[str, dict[str, float]],
         images_base_dir: str,
         images_extension: str = "dcm",
         label_column: str = "hospital_expire_flag",
@@ -37,7 +37,7 @@ class MIMICReduced(Dataset):
         limit: float | None = None,
         cpu_transforms=transformsV2.Compose(
             [
-                image.PadToSquare(),
+                PadToSquare(),
                 transformsV2.Resize((512, 512), antialias=True),  # cannot resize on GPU
                 # transformsV2.ToImage()
             ]
@@ -150,20 +150,24 @@ class MIMICReduced(Dataset):
 
         # check if the image needs padding to have a 1:1 ration before resize
         image = self.transforms(image)
-        x = (self.X[i] - self.mean) / (self.std + 1e-8)
+        x = self.normalize(self.X[i])
         y = self.y[i]
         return image, x, y
 
+    def normalize(self, t: Tensor) -> Tensor:
+        return (t - self.mean) / (self.std + 1e-8)
+
+    def stats(self):
+        return (self.mean, self.std)
+
 
 if __name__ == "__main__":
-    train_ds = MIMICReduced(
-        df=pd.read_csv("./ds_train.csv"),
-        label_column="hospital_expire_flag",
-        images_extension="jpg",
-        images_base_dir="../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files",
-    )
-
-    img, example, label = train_ds[0]
-    tvio.write_jpeg(img, "debug.jpg")
-    assert example.shape.numel() == 34, "Wrong shape for training example"
-    assert label.shape.numel() == 1, "Wrong shape for label"
+    # with open('./dataset/stats.json', 'r') as s:
+    #     ds = MIMICReduced(
+    #         df=pd.read_csv("./dataset/ds_train.csv"),
+    #         label_column="hospital_expire_flag",
+    #         images_extension="jpg",
+    #         images_base_dir="../mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files",
+    #         dataset_stats=json.load(s)
+    #     )
+    pass
