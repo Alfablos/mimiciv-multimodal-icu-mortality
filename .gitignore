@@ -31,9 +31,11 @@ mlruns
 mlartifacts
 
 
+
 # Other
 image_files.txt
 dataset/*
 Caddyfile
 markdown.html
 fixes.md
+.env
