@@ -26,9 +26,6 @@ RUN apt update && apt install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt clean
 
-COPY ./entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 WORKDIR /app
 
 USER trainer
@@ -39,5 +36,10 @@ RUN uv sync --frozen --no-install-project
 
 COPY --chown=trainer:trainer ./trainer ./trainer
 RUN uv sync --frozen
+
+# changes often and invalidates cache
+USER root
+COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
+USER trainer
 
 ENTRYPOINT [ "/entrypoint.sh" ]

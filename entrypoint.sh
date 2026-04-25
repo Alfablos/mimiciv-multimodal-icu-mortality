@@ -33,26 +33,26 @@ export DATASET_IMAGES_BASEDIR=${DATASET_IMAGES_BASEDIR:-"${DATASET_LOCAL_DIR}/${
 
 
 echo "Creating datasets directory..."
-train_ds_dir=$(dirname "$TRAINING_DATASET_FILE"); { [[ ! -d "$train_ds_dir" ]] && [[ ! -L "$train_ds_dir" ]] } && mkdir -p $(dirname "$TRAINING_DATASET_FILE")
-val_ds_dir=$(dirname "$VALIDATION_DATASET_FILE"); { [[ ! -d "$val_ds_dir" ]] && [[ ! -L "$val_ds_dir" ]] } && mkdir -p $(dirname "$VALIDATION_DATASET_FILE")
+train_ds_dir=$(dirname "$TRAINING_DATASET_FILE"); [[ ! -d "$train_ds_dir" ]] && [[ ! -L "$train_ds_dir" ]] && mkdir -p "$(dirname "$TRAINING_DATASET_FILE")"
+val_ds_dir=$(dirname "$VALIDATION_DATASET_FILE"); [[ ! -d "$val_ds_dir" ]] && [[ ! -L "$val_ds_dir" ]] && mkdir -p "$(dirname "$VALIDATION_DATASET_FILE")"
 echo "Creating images directory ${DATASET_IMAGES_BASEDIR}..."
-{ [[ ! -d "$DATASET_IMAGES_BASEDIR" ]] && [[ ! -L "$DATASET_IMAGES_BASEDIR" ]] } && mkdir -p $(dirname "$DATASET_IMAGES_BASEDIR")
+[[ ! -d "$DATASET_IMAGES_BASEDIR" ]] && [[ ! -L "$DATASET_IMAGES_BASEDIR" ]] && mkdir -p "$(dirname "$DATASET_IMAGES_BASEDIR")"
 
 [[ ! -e "$TRAINING_DATASET_FILE" ]] \
   && echo "Downloading TRAINING dataset file..." \
-  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://${DATASET_BUCKET}/${DATASET_TRAINING_KEY} ${TRAINING_DATASET_FILE}
+  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp "s3://${DATASET_BUCKET}/${DATASET_TRAINING_KEY}" "${TRAINING_DATASET_FILE}"
 
 [[ ! -e "$VALIDATION_DATASET_FILE" ]] \
   && echo "Downloading VALIDATION dataset file..." \
-  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://${DATASET_BUCKET}/${DATASET_VALIDATION_KEY} ${VALIDATION_DATASET_FILE}
+  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp "s3://${DATASET_BUCKET}/${DATASET_VALIDATION_KEY}" "${VALIDATION_DATASET_FILE}"
 
 [[ ! -e "$DATASET_STATS_FILE" ]] \
   && echo "Downloading dataset statistics..." \
-  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://${DATASET_BUCKET}/${DATASET_STATS_KEY} ${DATASET_STATS_FILE}
+  && aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" cp s3://"${DATASET_BUCKET}"/"${DATASET_STATS_KEY}" "${DATASET_STATS_FILE}"
 
 if [ -z "$(ls -A "$DATASET_IMAGES_BASEDIR" 2>/dev/null)" ]; then
   echo "Downloading dataset images, this may take a while..."
-  aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" sync s3://${DATASET_BUCKET}/${DATASET_IMAGES_DIR} ${DATASET_IMAGES_BASEDIR}
+  aws s3 --endpoint-url "$DATASET_ENDPOINT_URL" sync s3://"${DATASET_BUCKET}"/"${DATASET_IMAGES_DIR}" "${DATASET_IMAGES_BASEDIR}"
 fi
 
 echo "<=== Ready to train! ===>"
@@ -62,4 +62,4 @@ if ! cd "$BASE_DIR"; then
 fi
 
 # $BASE_DIR/.venv/bin already in PATH via Dockerfile!
-exec uv run python trainer/main.py
+exec uv run python -m trainer.main
