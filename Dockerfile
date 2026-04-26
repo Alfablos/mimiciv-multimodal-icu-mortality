@@ -42,4 +42,13 @@ USER root
 COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
 USER trainer
 
+ARG GIT_SHA
+ARG GIT_REF
+
+ENV GIT_SHA=${GIT_SHA} \
+  GIT_REF=${GIT_REF}
+
+LABEL org.opencontainers.image.revision=$GIT_SHA
+LABEL org.opencontainers.image.ref.name=$GIT_REF
+
 ENTRYPOINT [ "/entrypoint.sh" ]
