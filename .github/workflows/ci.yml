@@ -50,6 +50,8 @@ jobs:
 
       - name: Docker build & push
         uses: docker/build-push-action@v7
+        env:
+          BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
         with:
           push: true
           tags: ${{ secrets.CONTAINER_REGISTRY_HOST }}/mmim/mmim-trainer:${{ env.GIT_REF }}-${{ env.GIT_SHA }}
