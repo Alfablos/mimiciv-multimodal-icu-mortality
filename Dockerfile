@@ -1,6 +1,5 @@
-FROM python:3.13-slim
-
-COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
+FROM astral/uv:python3.13-trixie
+# COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
 
 # 1. Add UV_CACHE_DIR and set the PATH early
 ENV PYTHONDONTWRITEBYTECODE=1 \
