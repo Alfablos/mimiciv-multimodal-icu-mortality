@@ -18,15 +18,18 @@ from .config_utils import int_from_env, float_from_env, bool_from_env
 # MMIM_EPOCHS
 # MMIM_DROPOUT
 # MMIM_TRAIN_LIMIT
+# MMIM_DEBUG
 
 
-# deaths / total_stays in the training set
+# survivors / deaths in the training set.
 # needed due to heavily imbalanced label
 # This is a dataset property, do NOT modify unless you know what you're doing!
 # Be VERY CAREFUL when modifying `train_limit` as it really can impact this value!
 loss_pos_weight = float_from_env(
     "MMIM_LOSS_POS_WEIGHT", 5160 / 936
 )  # positive weight is negatives / positives = (6096 - 936) / 936 !!
+
+debug = os.getenv("MMIM_DEBUG", "false").lower() in ["true", "1", "yes"]
 
 train_csv = os.getenv("TRAINING_DATASET_FILE", "./dataset/ds_train.csv")
 val_csv = os.getenv("VALIDATION_DATASET_FILE", "./dataset/ds_val.csv")
