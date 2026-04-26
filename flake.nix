@@ -46,7 +46,6 @@
             packages = with pkgs; [
               python
               ty
-              pyright
               uv
               ruff
               duckdb
@@ -54,6 +53,7 @@
               pre-commit
               actionlint
               shellcheck
+              just
             ];
 
             shellHook = ''
