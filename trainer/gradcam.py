@@ -1,3 +1,4 @@
+import json
 import torch.nn.functional as F
 from enum import Enum
 import torch
@@ -142,16 +143,18 @@ if __name__ == "__main__":
         "runs:/51fe9faf09c5470eb5a5a420bd1d03e3/multimodal_icu_mortality"
     )
 
-    ds = MIMICReduced(
-        df=pd.read_csv("./ds_val.csv"),
-        label_column="hospital_expire_flag",
-        images_extension=image_extension,
-        images_base_dir=image_base_dir,
-        debug=True,
-        # optional for the validation set as well but
-        # allowes me to iterate faster
-        limit=hyperparameters["train_limit"],
-    )
+    with open("./dataset/stats.json", "r") as f:
+        ds = MIMICReduced(
+            df=pd.read_csv("./dataset/ds_val.csv"),
+            dataset_stats=json.load(f),
+            label_column="hospital_expire_flag",
+            images_extension=image_extension,
+            images_base_dir=image_base_dir,
+            debug=True,
+            # optional for the validation set as well but
+            # allows me to iterate faster
+            limit=hyperparameters["train_limit"],
+        )
 
     # Activations: A1...A1024
     # Gradients: dy/dA
