@@ -54,6 +54,8 @@
               actionlint
               shellcheck
               just
+              trivy
+              grype
             ];
 
             shellHook = ''
