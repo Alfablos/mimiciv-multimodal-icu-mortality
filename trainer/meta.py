@@ -1,9 +1,12 @@
+import torchvision
+import torch
 import os
 import mlflow
 import mlflow.pytorch
 import git
 from git import Repo
 from hashlib import sha256
+import platform
 
 
 from .config import (
@@ -51,15 +54,25 @@ def log_metadata(no_send=False):
     metadata = {
         "source.git_sha": git_sha,
         "source.git_ref": git_ref,
+        "dataset.train_filepath": train_csv,
         "dataset.train_sha256": dataset_train_hash,
+        "dataset.validation_filepath": val_csv,
         "dataset.validation_sha256": dataset_validation_hash,
         "dataset.stats_sha256": dataset_stats_hash,
         "dataset.images_extension": image_extension,
         "dataset.loss_positive_weight": loss_pos_weight,
         "dataset.images_base_dir": image_base_dir,
         "dataset.shuffle": dataset_shuffle,
-        "host.default_num_workers": default_num_workers,
-        "host.num_workers": num_workers,
+        "environment.default_num_workers": default_num_workers,
+        "environment.num_workers": num_workers,
+        "environment.platform": platform.platform(),
+        "environment.python_version": platform.python_version(),
+        "environment.torch_version": torch.__version__,
+        "environment.torchvision_version": torchvision.__version__,
+        "environment.cuda_version": torch.version.cuda or "N/A",
+        "environment.gpu_name": torch.cuda.get_device_name(0)
+        if torch.cuda.is_available()
+        else "N/A",
     }
 
     if not no_send:

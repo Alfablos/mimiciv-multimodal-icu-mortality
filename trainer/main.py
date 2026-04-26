@@ -33,7 +33,6 @@ if __name__ == "__main__":
         print(
             f"WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid."
         )
-
     with open(dataset_stats_file, "r") as f:
         ds_stats = json.load(f)
 
