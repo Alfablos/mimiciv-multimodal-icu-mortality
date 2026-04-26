@@ -11,6 +11,13 @@ import torchvision.io as tvio
 from .models import vision_encoder
 from .transforms import PadToSquare
 
+supported_image_extensions = ["jpg", "jpeg", "dcm", "dicom"]
+
+
+extended_image_extensions = supported_image_extensions + [
+    f".{e}" for e in supported_image_extensions
+]
+
 
 class MIMICReduced(Dataset):
     gpu_transforms = transformsV2.Compose(
@@ -44,8 +51,10 @@ class MIMICReduced(Dataset):
         ),
     ):
         super().__init__()
-        if images_extension.lower().lstrip(".") not in ["jpg", "dcm", "dicom"]:
-            raise ValueError(f"Extension {images_extension} is not supported.")
+        if images_extension.lower().lstrip(".") not in extended_image_extensions:
+            raise ValueError(
+                f"Extension {images_extension} is not supported. Supported extensions are: {', '.join(supported_image_extensions)}"
+            )
 
         if limit and not 0.0 < limit <= 1.0:
             raise ValueError("Invalid value for limit:", limit)
