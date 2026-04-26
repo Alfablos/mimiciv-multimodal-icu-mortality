@@ -1,5 +1,6 @@
 services:
   trainer:
+    image: mmim:0.1
     build:
       context: .
       dockerfile: Dockerfile
@@ -46,6 +47,9 @@ services:
       MMIM_LEARNING_RATE: ${MMIM_LEARNING_RATE:-0.0001}
       MMIM_TRAIN_LIMIT: ${MMIM_TRAIN_LIMIT:-1.0}
       MMIM_NUM_WORKERS: ${MMIM_NUM_WORKERS:-4}
+      MMIM_DEBUG: ${MMIM_DEBUG:-false}
+      GIT_SHA: $GIT_SHA
+      GIT_REF: $GIT_REF
     volumes:
       - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
       - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
