@@ -231,7 +231,7 @@ def train_start(_: Namespace):
         + str(hyperparameters["batch_size"])
         + "_lr"
         + str(hyperparameters["learning_rate"])
-        + "_epocs"
+        + "_epochs"
         + str(hyperparameters["epochs"])
         + "_dropout"
         + str(hyperparameters["dropout"])
@@ -305,7 +305,3 @@ def train_start(_: Namespace):
             train_loader=train_dl,
             val_loader=val_dl,
         )
-
-
-def train_cli():
-    train_start(Namespace())

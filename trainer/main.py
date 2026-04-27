@@ -6,7 +6,7 @@ from .builder import build
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.set_defaults(func=train_start)
+    parser.set_defaults(func=parser.print_help)
 
     commands = parser.add_subparsers()
 
@@ -25,12 +25,13 @@ if __name__ == "__main__":
     build_cmd.add_argument(
         "-d",
         "--database-path",
+        "--build",
         "--dbpath",
         "--db",
         "--database",
         "--db-path",
         required=True,
-        help="The path to the DuckDB database file",
+        help="The path to the DuckDB database file. IMPORTANT: the db should contain both MIMIC-IV and MIMIC-ED",
     )
 
     build_cmd.add_argument(
