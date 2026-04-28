@@ -1,3 +1,5 @@
+import json
+import os
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import duckdb
@@ -5,6 +7,7 @@ from duckdb import DuckDBPyConnection
 
 from .utils import find_paths
 
+default_datasets_dir = "./"
 
 core_features_allowed_missing = [
     "glucose",
@@ -124,12 +127,12 @@ def build(args):
     test_ds = prepare_set(test_ds, medians=medians)
 
     print("Splitting features and labels...")
-    X_train = train_ds.drop("hospital_expire_flag", axis=1)
-    Y_train = train_ds["hospital_expire_flag"]  # noqa: F841
-    X_val = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    Y_val = val_ds["hospital_expire_flag"]  # noqa: F841
-    X_test = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    Y_test = test_ds["hospital_expire_flag"]  # noqa: F841
+    X_train: pd.DataFrame = train_ds.drop("hospital_expire_flag", axis=1)
+    # Y_train: pd.DataFrame = train_ds["hospital_expire_flag"]  # noqa: F841
+    # X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    # Y_val: pd.DataFrame = val_ds["hospital_expire_flag"]  # noqa: F841
+    # X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    # Y_test: pd.DataFrame = test_ds["hospital_expire_flag"]  # noqa: F841
 
     print("Computing training set statistics...")
     stats = {  # noqa: F841
@@ -137,11 +140,27 @@ def build(args):
         "std": X_train[continuous_variables].std().to_dict(),
     }
 
-    # Write files according to variables!
+    # Write files according to variables! $TRAINING_DATASET_FILE, $VALIDATION_DATASET_FILE, $DATASET_STATS_FILE and a ds_test.csv
+    train_ds.to_csv(
+        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "train_ds.csv"),
+        index=False,
+    )
+    with open(
+        os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
+    ) as f:
+        json.dump(stats, f)
+    val_ds.to_csv(
+        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "val_ds.csv"),
+        index=False,
+    )
+    test_ds.to_csv(
+        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "test_ds.csv"),
+        index=False,
+    )
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]):
-    final_df = df.drop(["icu_intime", "stay_id"], axis=1)
+    final_df = df.drop(["icu_intime", "stay_id", "hadm_id"], axis=1)
     # Encoding gender assuming M and F are the only values in the dataset (no 'f', 'm' or others)
     # Encoding M as 0, F as 1
     if not final_df["gender"].isin([0, 1]).any():
@@ -250,8 +269,8 @@ def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.Dat
 	SELECT
 		hadm_id,
 		subject_id,
-        	admittime,
-        	hospital_expire_flag
+        admittime,
+        hospital_expire_flag
 	FROM mimiciv_hosp.admissions
     ),
     patients AS (
@@ -265,6 +284,8 @@ def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.Dat
     SELECT
     	s.subject_id,
     	m.stay_id,
+        m.dicom_id,
+        m.study_id,
     	s.hadm_id,
     	s.intime AS icu_intime,
     	p.gender,
@@ -288,7 +309,7 @@ def build_features(
 ) -> pd.DataFrame:
     # TODO: parametrize
 
-    features_q = """
+    labs_n_vitals_q = """
     WITH gt AS (
         SELECT stay_id, subject_id, icu_intime, gender, age, hospital_expire_flag
         FROM cohort
@@ -412,4 +433,4 @@ def build_features(
 	ON g.stay_id = ev.stay_id
     """
 
-    return connection.query(features_q).df()
+    return connection.query(labs_n_vitals_q).df()
