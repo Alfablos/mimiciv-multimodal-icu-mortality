@@ -5,7 +5,6 @@ set -e
 
 # Do NOT set AWS region, set the DATASET_ENDPOINT_URL instead. See https://docs.aws.amazon.com/general/latest/gr/s3.html
 DATASET_BUCKET=${DATASET_BUCKET:-"mmim"}
-DATASET_IMAGES_BUCKET=${DATASET_IMAGES_BUCKET:-"mmim"}
 DATASET_IMAGES_EXTENSION=${DATASET_IMAGES_EXTENSION:-dcm}
 # Set DATASET_ENDPOINT_URL
 DATASET_TRAINING_KEY=${DATASET_TRAINING_KEY:-"ds_train.csv"}
