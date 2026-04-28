@@ -142,7 +142,7 @@ def build(args):
 
     # Write files according to variables! $TRAINING_DATASET_FILE, $VALIDATION_DATASET_FILE, $DATASET_STATS_FILE and a ds_test.csv
     train_ds.to_csv(
-        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "train_ds.csv"),
+        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
         index=False,
     )
     with open(
@@ -150,11 +150,11 @@ def build(args):
     ) as f:
         json.dump(stats, f)
     val_ds.to_csv(
-        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "val_ds.csv"),
+        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
         index=False,
     )
     test_ds.to_csv(
-        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "test_ds.csv"),
+        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
         index=False,
     )
 
