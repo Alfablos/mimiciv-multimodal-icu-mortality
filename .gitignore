@@ -36,6 +36,7 @@ mlartifacts
 # Other
 image_files.txt
 dataset/*
+!dataset/*.py
 Caddyfile
 markdown.html
 fixes.md
