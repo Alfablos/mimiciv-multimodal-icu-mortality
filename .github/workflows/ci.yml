@@ -8,7 +8,7 @@ on:
 
 env:
   GIT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-  GIT_REF: ${{ github.ref_name }} # returns the name of the merge ref in PRs
+  GIT_REF: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }} # returns the name of the merge ref in PRs
 
 
 jobs:
