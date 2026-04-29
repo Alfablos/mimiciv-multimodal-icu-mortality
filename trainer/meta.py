@@ -22,7 +22,7 @@ from .config import (
 )
 
 
-def get_git_repo() -> Repo:
+def get_local_repo() -> Repo:
     try:
         r = Repo(".")
     except git.exc.InvalidGitRepositoryError:
@@ -36,12 +36,12 @@ def log_metadata(no_send=False):
     git_sha = os.getenv("GIT_SHA")
     git_ref = os.getenv("GIT_REF")
 
-    if git_sha is None:
-        repo = get_git_repo()
+    if git_sha is None or git_sha == "":
+        repo = get_local_repo()
         git_sha = repo.head.commit.hexsha
-    if git_ref is None:
+    if git_ref is None or git_ref == "":
         if not repo:
-            repo = get_git_repo()
+            repo = get_local_repo()
         git_ref = repo.head.ref.name
 
     with open(train_csv, "rb") as f:

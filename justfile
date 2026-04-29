@@ -17,5 +17,12 @@ image:
     --label org.opencontainers.image.ref.name="${GIT_REF}" \
     -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
-docker-up:
-  @ docker compose up --build
+train-container:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  GIT_SHA="$(git rev-parse HEAD)"
+  GIT_REF="$(git symbolic-ref --quiet --short HEAD)"
+  docker compose build \
+    --build-arg GIT_SHA \
+    --build-arg GIT_REF &&
+    docker compose up

@@ -1,12 +1,12 @@
 services:
   trainer:
-    # image: mmim:0.1
+    image: mmim:0.1
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        GIT_SHA: ${GIT_SHA}
-        GIT_REF: ${GIT_REF}
+        - GIT_SHA
+        - GIT_REF
     init: true
     restart: "no"
     deploy:
