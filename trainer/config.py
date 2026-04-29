@@ -1,13 +1,14 @@
 from os import cpu_count
 import os
 
-from .config_utils import int_from_env, float_from_env, bool_from_env
+from .utils import int_from_env, float_from_env, bool_from_env
 
 # Available environment variables:
 # DATASET_LOCAL_DIR
 # BASE_DIR
 # TRAINING_DATASET_FILE
 # VALIDATION_DATASET_FILE
+# DATASET_STATS_FILE
 # DATASET_IMAGES_BASEDIR
 # MLFLOW_TRACKING_URI
 # MLFLOW_TRACKING_USERNAME

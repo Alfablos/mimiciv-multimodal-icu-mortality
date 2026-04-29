@@ -4,6 +4,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA}
+        GIT_REF: ${GIT_REF}
     init: true
     restart: "no"
     deploy:
@@ -51,9 +54,9 @@ services:
       # GIT_SHA: $GIT_SHA
       # GIT_REF: $GIT_REF
     volumes:
-      - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
-      - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
-      - ./dataset/stats.json:/app/dataset/stats.json
+      - ../ds_train.csv:/app/dataset/ds_train.csv
+      - ../ds_val.csv:/app/dataset/ds_val.csv
+      - ../stats.json:/app/dataset/stats.json
       - ./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files:/app/dataset/mimic-cxr-jpg
     extra_hosts:
       - "host.docker.internal:host-gateway"
