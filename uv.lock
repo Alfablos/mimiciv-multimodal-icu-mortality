@@ -11,6 +11,15 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aenum"
+version = "3.1.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/e9/8b283567c1fef7c24d1f390b37daede8b61593d8cdaffb8e95d571699e83/aenum-3.1.17.tar.gz", hash = "sha256:a969a4516b194895de72c875ece355f17c0d272146f7fda346ef74f93cf4d5ba", size = 137648, upload-time = "2026-03-20T20:43:29.846Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/8d/1fe30c6fd8999b9d462547c4a1bb6690bda24af38f2913c4bec7decb81f2/aenum-3.1.17-py3-none-any.whl", hash = "sha256:8b883a37a04e74cc838ac442bdd28c266eae5bbf13e1342c7ef123ed25230139", size = 165560, upload-time = "2026-03-20T20:43:27.681Z" },
+]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -554,6 +563,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "gitpython" },
     { name = "ipykernel" },
+    { name = "lakefs" },
     { name = "matplotlib" },
     { name = "mlflow" },
     { name = "pandas" },
@@ -575,6 +585,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.5.1" },
     { name = "gitpython", specifier = ">=3.1.46" },
     { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "lakefs", specifier = ">=0.16.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mlflow", specifier = ">3.11.0" },
     { name = "pandas", specifier = "<3.0" },
@@ -1188,6 +1199,34 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/07/18/43a5f24608d8c313dd189cf838c8e68d75b115567c6279de7796197cfb6a/kiwisolver-1.5.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:e7a116ae737f0000343218c4edf5bd45893bfeaff0993c0b215d7124c9f77646", size = 2394403, upload-time = "2026-03-09T13:15:31.517Z" },
     { url = "https://files.pythonhosted.org/packages/3b/b5/98222136d839b8afabcaa943b09bd05888c2d36355b7e448550211d1fca4/kiwisolver-1.5.0-cp314-cp314t-win_amd64.whl", hash = "sha256:1dd9b0b119a350976a6d781e7278ec7aca0b201e1a9e2d23d9804afecb6ca681", size = 79687, upload-time = "2026-03-09T13:15:33.204Z" },
     { url = "https://files.pythonhosted.org/packages/99/a2/ca7dc962848040befed12732dff6acae7fb3c4f6fc4272b3f6c9a30b8713/kiwisolver-1.5.0-cp314-cp314t-win_arm64.whl", hash = "sha256:58f812017cd2985c21fbffb4864d59174d4903dd66fa23815e74bbc7a0e2dd57", size = 70032, upload-time = "2026-03-09T13:15:34.411Z" },
+]
+
+[[package]]
+name = "lakefs"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lakefs-sdk" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b2/60/5cdf074905ac0bb1fe11570ad56e94f22df651d02b67ab267fbdf46bb561/lakefs-0.16.0.tar.gz", hash = "sha256:f17afa5f8d99a622e7d8088a57c74262ae058befc6a4eba7e4b6cc9704f84748", size = 34340, upload-time = "2026-04-10T16:37:22.478Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/af/15e3bb8b125795c008ff57fa2592130f5f25a0521726e44f3902f8903a60/lakefs-0.16.0-py3-none-any.whl", hash = "sha256:a513bc8b5a64d31b1ed75ce11aee803de84c1e9c11207a042acd874012799b0b", size = 39324, upload-time = "2026-04-10T16:37:21.451Z" },
+]
+
+[[package]]
+name = "lakefs-sdk"
+version = "1.80.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aenum" },
+    { name = "pydantic" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/cf/5d9912899e4c04b8208fa9a5adf7ea3a1c88352b22e701cbf27150dd2eb1/lakefs_sdk-1.80.0.tar.gz", hash = "sha256:15811c983fb02020deca08b48e76a0004c00fa54e3e9d935f87288fb28df16ff", size = 138797, upload-time = "2026-03-26T11:46:10.629Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/fa/071bb743a34e241891f7bbf471a3ed2a13c3826d64aa7eeeabd3310c2cfb/lakefs_sdk-1.80.0-py3-none-any.whl", hash = "sha256:3d69b19c57eb5a2e194b7f12679df675c8051cc3f0da7514b373953f48276ca9", size = 244003, upload-time = "2026-03-26T11:46:09.566Z" },
 ]
 
 [[package]]
