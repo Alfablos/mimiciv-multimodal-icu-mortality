@@ -38,6 +38,31 @@ from .config import (
     debug,
 )
 from .meta import log_metadata
+from .config import model_selection_metric
+
+
+def is_better_score(
+    current: float, best: float | None, mode: Literal["lower", "higher"]
+):
+    if best is None:
+        return True
+
+    if mode == "higher":
+        return current > best
+
+    return current < best
+
+
+def log_model(model: Fusion, epoch: int, metrics: dict[str, float]):
+    mlflow.pytorch.log_model(model, name="multimodal_icu_mortality")
+    mlflow.log_metric("best_epoch", epoch)
+    mlflow.log_metric("best_val_loss", metrics["val_loss"])
+    mlflow.log_metric("best_val_auroc", metrics["AUROC"])
+    mlflow.log_metric("best_val_auprc", metrics["AUPRC"])
+    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics["sens_at_95_spec"])
+    mlflow.set_tag("best_model.logged", "true")
+    mlflow.set_tag("best_model.epoch", str(epoch))
+    mlflow.set_tag("best_model.selection_metric", model_selection_metric)
 
 
 def upload_gradcam(
@@ -82,69 +107,88 @@ def train(
     model = model.to(device)
     loss_fn = loss_fn.to(device)
 
-    for epoch in range(epochs):
-        model.train()
-        print(f"Starting epoch {epoch}.")
+    best_metric: float | None = None
 
-        for batch_n, (images, tabs, labels) in enumerate(train_loader):
-            images, tabs, labels = (
-                images.to(device),
-                tabs.to(device),
-                labels.unsqueeze(dim=1).to(device),
-            )
-            images = MIMICReduced.gpu_transforms(images)
+    try:
+        for epoch in range(epochs):
+            model.train()
+            print(f"Starting epoch {epoch}.")
 
-            optimizer.zero_grad()
-            # preds is called like that to provide a uniform interface
-            # but the model is applying no activation function, actually ouputting logits.
-            # the curremt loss function is BCEWithLogitsLoss
-            # Careful when changing the loss function
-            preds = model(images, tabs)
-            loss = loss_fn(preds, labels)
-            loss.backward()
+            losses = []
 
-            optimizer.step()  # must happen before to avoid zeroing the gradients
-            if batch_n == len(train_loader) - 1:
-                print("Sending training metrics and artifacts to mlflow")
-                mlflow.log_metric("train_loss", loss.item(), step=epoch)
-
-                upload_gradcam(
-                    images=images,
-                    tabs=tabs,
-                    model=model,
-                    epoch_n=epoch,
-                    purpose="train",
+            for batch_n, (images, tabs, labels) in enumerate(train_loader):
+                images, tabs, labels = (
+                    images.to(device),
+                    tabs.to(device),
+                    labels.unsqueeze(dim=1).to(device),
                 )
+                images = MIMICReduced.gpu_transforms(images)
 
-            print(
-                f"Train epoch {epoch} batch {batch_n} of {len(train_loader)} | loss:",
-                loss.item(),
+                optimizer.zero_grad()
+                # preds is called like that to provide a uniform interface
+                # but the model is applying no activation function, actually ouputting logits.
+                # the curremt loss function is BCEWithLogitsLoss
+                # Careful when changing the loss function
+                preds: Tensor = model(images, tabs)
+                loss: Tensor = loss_fn(preds, labels)
+                loss.backward()
+                losses.append(float(loss.item()))
+                print(
+                    f"Train epoch {epoch} batch {batch_n} of {len(train_loader)} | loss:",
+                    loss.item(),
+                )
+                optimizer.step()  # must happen before to avoid zeroing the gradients
+
+            mean_loss = float(np.mean(losses))
+            print("Sending training metrics and artifacts to mlflow")
+
+            mlflow.log_metric("train_loss", mean_loss, step=epoch)
+
+            upload_gradcam(
+                images=images,
+                tabs=tabs,
+                model=model,
+                epoch_n=epoch,
+                purpose="train",
             )
 
-        # Only doing this on the validation set, the primary overfitting indicator
-        # is the raw loss.
-        evaluate(
-            model=model,
-            val_loader=val_loader,
-            device=device,
-            loss_fn=loss_fn,
-            epoch_n=epoch,
-        )
-        mlflow.pytorch.log_model(model, name="multimodal_icu_mortality")
-    print("Training done.")
+            # Only doing this on the validation set, the primary overfitting indicator
+            # is the raw loss.
+            metrics = evaluate(
+                model=model,
+                val_loader=val_loader,
+                device=device,
+                loss_fn=loss_fn,
+                epoch_n=epoch,
+            )
+
+            current_score = float(metrics[model_selection_metric])
+            if is_better_score(current_score, best_metric, mode="higher"):
+                best_metric = current_score
+                log_model(model=model, epoch=epoch, metrics=metrics)
+
+        mlflow.set_tag("training.status", "completed")
+        print("Training done.")
+
+    except KeyboardInterrupt:
+        print("User interrupted the training job.")
+        mlflow.set_tag("training.status", "interrupted")
+        print("Exiting.")
 
 
 def evaluate(
-    model: nn.Module,
+    model: Fusion,
     val_loader: DataLoader,
     device: Literal["cuda", "cpu"],
     loss_fn: nn.Module,
     epoch_n: int,
-):
+) -> dict[str, float]:
     model.eval()
     with torch.no_grad():
         preds = []
         labels = []
+
+        val_losses = []
 
         for batch_n, (val_images, val_tabs, val_labels) in enumerate(val_loader):
             val_images, val_tabs, val_labels = (
@@ -152,28 +196,31 @@ def evaluate(
                 val_tabs.to(device),
                 val_labels.unsqueeze(dim=1).to(device),
             )
-            val_images = MIMICReduced.gpu_transforms(val_images)
+            val_images: Tensor = MIMICReduced.gpu_transforms(val_images)
 
-            val_preds = model(val_images, val_tabs)
-            val_loss = loss_fn(val_preds, val_labels)
+            val_preds: Tensor = model(val_images, val_tabs)
+            val_loss: Tensor = loss_fn(val_preds, val_labels)
             print(
                 f"Validation epoch {epoch_n} batch {batch_n} of {len(val_loader)} | loss:",
                 val_loss.item(),
             )
+            val_losses.append(val_loss.item())
 
             # logits => probabilities
             pred_probs = torch.sigmoid(val_preds).cpu()
             preds.append(pred_probs)
 
             labels.append(val_labels.cpu())
-            if batch_n == len(val_loader) - 1:
-                mlflow.log_metric("val_loss", val_loss.item(), step=epoch_n)
 
         # preds and labels are lists of lists
         preds = torch.cat(preds).numpy()  # now flat
         labels = torch.cat(labels).numpy()
 
+        val_mean_loss = np.mean(val_losses)
+        mlflow.log_metric("val_loss", val_mean_loss, step=epoch_n)
+
         metrics = get_metrics(preds, labels)
+        metrics["val_loss"] = val_mean_loss
         auroc = metrics["AUROC"]
         auprc = metrics["AUPRC"]
         sens_at_95_spec = metrics["sens_at_95_spec"]
@@ -186,19 +233,18 @@ def evaluate(
             f"AUPRC: {metrics['AUPRC']}\n"
             f"Sensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n"
         )
-
     upload_gradcam(
         images=val_images, tabs=val_tabs, model=model, epoch_n=epoch_n, purpose="val"
     )
+    return metrics
 
 
-def get_metrics(preds, labels):
-    auroc = roc_auc_score(y_true=labels, y_score=preds)
-    auprc = average_precision_score(y_true=labels, y_score=preds)
+def get_metrics(preds, labels) -> dict[str, float]:
+    auroc = float(roc_auc_score(y_true=labels, y_score=preds))
+    auprc = float(average_precision_score(y_true=labels, y_score=preds))
     false_positive_rate, true_positive_rate, thresholds = roc_curve(
         y_true=labels, y_score=preds
     )
-
     # Specificity = 1 - false_positive_rate
     # Selecting false_positive_rate below 0.05!
     under_005_indices = np.where(false_positive_rate <= 0.05)[0]
@@ -240,13 +286,14 @@ def train_start(_: Namespace):
             if hyperparameters["train_limit"] != 1.0
             else ""
         )
-    ):
+    ) as run:
         metadata = log_metadata()
         for k, v in metadata.items():
             print(f"{k} => {v}")
         mlflow.log_params(
             {f"hyperparameters.{k}": v for k, v in hyperparameters.items()}
         )
+        mlflow.set_tag("mlflow.run_id", run.info.run_id)  # for easy retrieval later
 
         model = Fusion(dropout=hyperparameters["dropout"])
 

@@ -61,4 +61,4 @@ if ! cd "$BASE_DIR"; then
 fi
 
 # $BASE_DIR/.venv/bin already in PATH via Dockerfile!
-exec uv run python -m trainer.main
+exec uv run python -m trainer.main train

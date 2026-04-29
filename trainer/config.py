@@ -46,6 +46,8 @@ dataset_shuffle = bool_from_env("MMIM_DATASET_SHUFFLE", True)
 default_num_workers = max(((cpu_count() or 1) // 2) - 2, 0)
 num_workers = int_from_env("MMIM_NUM_WORKERS", default_num_workers)
 
+model_selection_metric = "AUPRC"
+
 hyperparameters = {
     "batch_size": int_from_env("MMIM_BATCH_SIZE", 32),
     "epochs": int_from_env("MMIM_EPOCHS", 10),
