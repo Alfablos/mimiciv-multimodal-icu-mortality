@@ -207,8 +207,8 @@ def build(args):
     }
 
     manifest = {
-        "dataset": "multimodal-icu-mortality-24",
-        "dataset_version": "v001",
+        "dataset": "multimodal-icu-mortality-24h",
+        "dataset_version": dataset_version,
         "prediction_time": "icu_intime",
         "lookback_window_hours": 24,
         "source": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
