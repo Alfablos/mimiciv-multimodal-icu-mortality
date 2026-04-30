@@ -40,3 +40,4 @@ Caddyfile
 markdown.html
 fixes.md
 .env
+stats.json

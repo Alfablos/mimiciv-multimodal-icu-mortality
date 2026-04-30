@@ -6,10 +6,8 @@ import lakefs
 from lakefs.client import Client
 import duckdb
 from duckdb import DuckDBPyConnection
-import git
-from git import Repo
 
-from .utils import find_paths
+from .utils import get_local_repo, find_paths, sha256str, df_schema
 
 default_datasets_dir = "./"
 
@@ -58,10 +56,11 @@ continuous_variables = [
     "spO2_max",
 ]
 
+label = "hospital_expire_flag"
+
 
 def build(args):
     duckdb_db = args.database_path
-    images_basedir = args.images_basedir
     metadata_file = args.metadata_file
 
     git_sha = os.getenv("GIT_SHA")
@@ -90,21 +89,24 @@ def build(args):
     if lakefs_repository is None or lakefs_repository == "":
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
-    lakefs_base_branch = os.getenv("LAKEFS_BASE_BRANCH", "master")
-    if lakefs_base_branch == "master":
-        print("WARNING: The variable LAKEFS_BASE_BRANCH is not set. Using 'master'")
-
-    not_found = find_paths([duckdb_db, images_basedir, metadata_file])
+    not_found = find_paths([duckdb_db, metadata_file])
     if len(not_found) != 0:
         raise FileNotFoundError(f"Unable to find files: {', '.join(not_found)}")
 
+    lakefs_branch = (
+        "build_" + git_ref.replace("/", "-").replace("_", "-") + "-" + git_sha[:9]
+    )
+    print(f"Will push to LakeFS branch: {lakefs_branch}")
+
     dconn = duckdb.connect(database=duckdb_db, read_only=True)
-    images_manifest = build_images_manifest(
+    images_manifest, images_query = build_images_manifest(
         connection=dconn, metadata_file=metadata_file
     )
-    cohort = build_cohort(connection=dconn, images_manifest=images_manifest)
+    cohort, cohort_query = build_cohort(
+        connection=dconn, images_manifest=images_manifest
+    )
 
-    features = build_features(connection=dconn, cohort=cohort)
+    features, labs_n_vitals_query = build_features(connection=dconn, cohort=cohort)
     initial_dataset = cohort.join(
         features.set_index("subject_id").drop(
             ["stay_id", "gender", "age", "hospital_expire_flag"], axis=1
@@ -142,7 +144,9 @@ def build(args):
     train_ds, other_ds = train_test_split(
         initial_dataset, test_size=0.2, shuffle=True, random_state=42
     )
-    val_ds, test_ds = train_test_split(other_ds, test_size=0.1)
+    val_ds, test_ds = train_test_split(
+        other_ds, test_size=0.5, shuffle=True, random_state=42
+    )
 
     medians: dict[str, float] = dict()
 
@@ -162,12 +166,12 @@ def build(args):
     test_ds = prepare_set(test_ds, medians=medians)
 
     print("Splitting features and labels...")
-    X_train: pd.DataFrame = train_ds.drop("hospital_expire_flag", axis=1)
-    # Y_train: pd.DataFrame = train_ds["hospital_expire_flag"]  # noqa: F841
-    # X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_val: pd.DataFrame = val_ds["hospital_expire_flag"]  # noqa: F841
-    # X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_test: pd.DataFrame = test_ds["hospital_expire_flag"]  # noqa: F841
+    X_train: pd.DataFrame = train_ds.drop(label, axis=1)
+    Y_train: pd.Series = train_ds["hospital_expire_flag"]  # noqa: F841
+    X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    Y_val: pd.Series = val_ds["hospital_expire_flag"]  # noqa: F841
+    X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    Y_test: pd.Series = test_ds["hospital_expire_flag"]  # noqa: F841
 
     print("Computing training set statistics...")
     stats = {  # noqa: F841
@@ -175,49 +179,88 @@ def build(args):
         "std": X_train[continuous_variables].std().to_dict(),
     }
 
+    train_ds_csv = train_ds.to_csv(index=False)
+    val_ds_csv = val_ds.to_csv(index=False)
+    test_ds_csv = test_ds.to_csv(index=False)
+    json_stats = json.dumps(stats)
+
+    queries = {
+        "images_query_sha": sha256str(images_query),
+        "images_query": images_query,
+        "cohort_query_sha": sha256str(cohort_query),
+        "cohort_query": images_query,
+        "features_query_sha": sha256str(labs_n_vitals_query),
+        "features_query": labs_n_vitals_query,
+    }
+
+    manifest = {
+        "dataset": "multimodal-icu-mortality-24",
+        "dataset_version": "v001",
+        "prediction_time": "icu_intime",
+        "lookback_window_hours": 24,
+        "source": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
+        "code": {
+            "git_sha": git_sha,
+            "git_ref": git_ref,
+        },
+        "queries": queries,
+        "splits": {
+            "strategy": "first_stay_per_subject_firstcxr_random_split",
+            "random_seed": 42,
+            "train_rows": len(train_ds),
+            "val_rows": len(val_ds),
+            "test_rows": len(test_ds),
+            "train_positives": int(train_ds[train_ds[label] == 1][label].sum()),
+            "val_positives": int(val_ds[val_ds[label] == 1][label].sum()),
+            "test_positives": int(test_ds[test_ds[label] == 1][label].sum()),
+        },
+        "files": {
+            "ds_train.csv": {"sha256": sha256str(train_ds_csv)},
+            "ds_val.csv": {"sha256": sha256str(val_ds_csv)},
+            "ds_test.csv": {"sha256": sha256str(test_ds_csv)},
+            "stats.json": {"sha256": sha256str(json_stats)},
+        },
+    }
+
+    schema = df_schema(
+        train_ds, label_column=label, id_columns=["subject_id", "study_id", "dicom_id"]
+    )
+
     # Write files according to variables! $TRAINING_DATASET_FILE, $VALIDATION_DATASET_FILE, $DATASET_STATS_FILE and a ds_test.csv
-    # train_ds.to_csv(
-    #     os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
-    #     index=False,
-    # )
-    # with open(
-    #     os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
-    # ) as f:
-    #     json.dump(stats, f)
-    # val_ds.to_csv(
-    #     os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
-    #     index=False,
-    # )
-    # test_ds.to_csv(
-    #     os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
-    #     index=False,
-    # )
+    train_ds.to_csv(
+        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
+        index=False,
+    )
+    with open(
+        os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
+    ) as f:
+        json.dump(stats, f)
+    val_ds.to_csv(
+        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
+        index=False,
+    )
+    test_ds.to_csv(
+        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
+        index=False,
+    )
 
     lclient = Client(
         host=lakefs_host, username=lakefs_username, password=lakefs_password
     )
     lrepo = lakefs.Repository(lakefs_repository, client=lclient)
-    branch = git_ref + "-" + git_sha[0:9]
-    branch = lrepo.branch(branch).create(
-        source_reference=lakefs_base_branch, exist_ok=True
+    # create a build/${code-ref}-${code-sha}
+    branch = lrepo.branch(lakefs_branch).create(
+        source_reference="master", exist_ok=True
     )
 
-    branch.object("ds_train.csv").upload(data=train_ds.to_csv())
-    branch.object("ds_val.csv").upload(data=val_ds.to_csv())
-    branch.object("ds_test.csv").upload(data=test_ds.to_csv())
-    branch.object("stats.json").upload(data=json.dumps(stats))
+    branch.object("ds_train.csv").upload(data=train_ds_csv)
+    branch.object("ds_val.csv").upload(data=val_ds_csv)
+    branch.object("ds_test.csv").upload(data=test_ds_csv)
+    branch.object("stats.json").upload(data=json_stats)
+    branch.object("manifest.json").upload(data=json.dumps(manifest))
+    branch.object("schema.json").upload(data=json.dumps(schema))
 
     branch.commit(message=f"Generated by {git_ref}/{git_sha}", metadata={})
-
-
-def get_local_repo() -> Repo:
-    try:
-        r = Repo(".")
-    except git.exc.InvalidGitRepositoryError:
-        raise ValueError(
-            "Repo-related environment variables not found and this is not a git repo, please set GIT_SHA and GIT_REF or version this code."
-        )
-    return r
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:
@@ -250,7 +293,9 @@ def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:
     return final_df
 
 
-def build_images_manifest(connection: DuckDBPyConnection, metadata_file: str):
+def build_images_manifest(
+    connection: DuckDBPyConnection, metadata_file: str
+) -> tuple[pd.DataFrame, str]:
     images_q = f"""
     WITH cxr_meta_parsed AS (
 	SELECT
@@ -311,10 +356,12 @@ def build_images_manifest(connection: DuckDBPyConnection, metadata_file: str):
     SELECT * EXCLUDE(cxr_number) FROM deduplicated
 	WHERE cxr_number = 1;
     """
-    return connection.query(images_q).df()
+    return connection.query(images_q).df(), images_q
 
 
-def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.DataFrame:
+def build_cohort(
+    connection: DuckDBPyConnection, images_manifest: pd.DataFrame
+) -> tuple[pd.DataFrame, str]:
     # images_manifest is used in this query, DuckDB supports
     # referencing pandas dataframes in queries directly (see at the end)
     cohort_q = """
@@ -362,12 +409,12 @@ def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.Dat
     ;
     """
 
-    return connection.query(cohort_q).df()
+    return connection.query(cohort_q).df(), cohort_q
 
 
 def build_features(
     connection: DuckDBPyConnection, cohort: pd.DataFrame
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, str]:
     # TODO: parametrize
 
     labs_n_vitals_q = """
@@ -494,4 +541,4 @@ def build_features(
 	ON g.stay_id = ev.stay_id
     """
 
-    return connection.query(labs_n_vitals_q).df()
+    return connection.query(labs_n_vitals_q).df(), labs_n_vitals_q

@@ -30,19 +30,6 @@ if __name__ == "__main__":
     )
 
     build_cmd.add_argument(
-        "-i",
-        "--images-basedir",
-        "--images",
-        "--images-dir",
-        "--images-directory",
-        "--images-base-dir",
-        "--images-base-directory",
-        required=True,
-        help="""Path to a directory containing images.
-            The directory structure MUST follow the MIMIC original one.""",
-    )
-
-    build_cmd.add_argument(
         "-m",
         "--metadata-file",
         "--metadata",
