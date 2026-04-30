@@ -7,7 +7,14 @@ from lakefs.client import Client
 import duckdb
 from duckdb import DuckDBPyConnection
 
-from .utils import get_local_repo, find_paths, dataset_summary, sha256str, df_schema
+from .utils import (
+    get_local_repo,
+    find_paths,
+    dataset_summary,
+    sha256str,
+    df_schema,
+    leakage_check,
+)
 
 default_datasets_dir = "./"
 
@@ -64,14 +71,15 @@ def build(args):
     metadata_file = args.metadata_file
 
     git_sha = os.getenv("GIT_SHA")
-    if git_sha is None or git_sha == "":
-        repo = get_local_repo()
-        git_sha = repo.head.commit.hexsha
     git_ref = os.getenv("GIT_REF")
+
+    if (not git_ref or git_ref == "") or (not git_sha or git_sha == ""):
+        repo = get_local_repo()
+
     if git_ref is None or git_ref == "":
-        if not repo:
-            repo = get_local_repo()
         git_ref = repo.head.ref.name
+    if git_sha is None or git_sha == "":
+        git_sha = repo.head.commit.hexsha
 
     lakefs_host = os.getenv("LAKEFS_HOST")
 
@@ -88,6 +96,8 @@ def build(args):
         lakefs_repository is None or lakefs_repository == ""
     ) and lakefs_host is not None:
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
+
+    output_dir = os.getenv("DATASET_OUTPUT_DIR", default_datasets_dir).rstrip("/") + "/"
 
     not_found = find_paths([duckdb_db, metadata_file])
     if len(not_found) != 0:
@@ -167,11 +177,11 @@ def build(args):
 
     print("Splitting features and labels...")
     X_train: pd.DataFrame = train_ds.drop(label, axis=1)
-    # Y_train: pd.Series = train_ds["hospital_expire_flag"]  # noqa: F841
-    # X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_val: pd.Series = val_ds["hospital_expire_flag"]  # noqa: F841
-    # X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_test: pd.Series = test_ds["hospital_expire_flag"]  # noqa: F841
+    # Y_train: pd.Series = train_ds['hospital_expire_flag']  # noqa: F841
+    # X_val: pd.DataFrame = val_ds.drop('hospital_expire_flag', axis=1)  # noqa: F841
+    # Y_val: pd.Series = val_ds['hospital_expire_flag']  # noqa: F841
+    # X_test: pd.DataFrame = test_ds.drop('hospital_expire_flag', axis=1)  # noqa: F841
+    # Y_test: pd.Series = test_ds['hospital_expire_flag']  # noqa: F841
 
     print("Computing training set statistics...")
     stats = {  # noqa: F841
@@ -188,7 +198,7 @@ def build(args):
         "images_query_sha": sha256str(images_query),
         "images_query": images_query,
         "cohort_query_sha": sha256str(cohort_query),
-        "cohort_query": images_query,
+        "cohort_query": cohort_query,
         "features_query_sha": sha256str(labs_n_vitals_query),
         "features_query": labs_n_vitals_query,
     }
@@ -210,6 +220,7 @@ def build(args):
             "train": dataset_summary(train_ds, label),
             "validation": dataset_summary(val_ds, label),
             "test": dataset_summary(test_ds, label),
+            "leakage_checks": leakage_check(train_ds, val_ds, test_ds),
         },
         "files": {
             "ds_train.csv": {"sha256": sha256str(train_ds_csv)},
@@ -224,30 +235,18 @@ def build(args):
     )
 
     # Write files according to variables! $TRAINING_DATASET_FILE, $VALIDATION_DATASET_FILE, $DATASET_STATS_FILE and a ds_test.csv
-    train_ds.to_csv(
-        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
-        index=False,
-    )
+    train_ds.to_csv(output_dir + "ds_train.csv", index=False)
+    val_ds.to_csv(output_dir + "ds_val.csv", index=False)
+    test_ds.to_csv(output_dir + "ds_test.csv", index=False)
 
-    with open(
-        os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
-    ) as f:
-        json.dump(stats, f)
+    with open(output_dir + "stats.json", "w") as f:
+        json.dump(stats, f, indent=2)
 
-    with open(
-        os.getenv("DATASET_MANIFEST_FILE", default_datasets_dir + "manifest.json"), "w"
-    ) as f:
-        json.dump(stats, f)
+    with open(output_dir + "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=2)
 
-    val_ds.to_csv(
-        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
-        index=False,
-    )
-
-    test_ds.to_csv(
-        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
-        index=False,
-    )
+    with open(output_dir + "schema.json", "w") as f:
+        json.dump(schema, f, indent=2)
 
     if lakefs_host:
         lclient = Client(

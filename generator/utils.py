@@ -42,8 +42,8 @@ def df_schema(
 
 def dataset_summary(ds: pd.DataFrame, label_column: str):
     total = len(ds)
-    positives = ds[label_column].sum()
-    negatives = total - positives
+    positives = int(ds[label_column].sum())
+    negatives = int(total - positives)
     return {
         "total": total,
         "positives": positives,
@@ -51,3 +51,20 @@ def dataset_summary(ds: pd.DataFrame, label_column: str):
         "prevalence": positives / total,
         "recommended_loss_positive_weight": positives / negatives,
     }
+
+
+def leakage_check(train_ds: pd.DataFrame, val_ds: pd.DataFrame, test_ds: pd.DataFrame):
+    train_set = set(train_ds["subject_id"])
+    val_set = set(val_ds["subject_id"])
+    test_set = set(test_ds["subject_id"])
+
+    no_leakages = {
+        "train_val_are_disjoint": train_set.isdisjoint(val_set),
+        "train_test_are_disjoint": train_set.isdisjoint(test_set),
+        "val_test_are_disjoint": val_set.isdisjoint(test_set),
+    }
+
+    if not all(no_leakages.values()):
+        raise ValueError(f"Leakage tests not passed; leakage detected: {no_leakages}")
+
+    return no_leakages
