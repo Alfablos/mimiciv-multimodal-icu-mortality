@@ -218,7 +218,7 @@ def build(args):
         },
         "queries": queries,
         "splits": {
-            "strategy": "first_stay_per_subject_firstcxr_random_split",
+            "strategy": "first_stay_per_subject_first_cxr_random_split",
             "random_seed": 42,
             "train": dataset_summary(train_ds, label),
             "validation": dataset_summary(val_ds, label),
