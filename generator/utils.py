@@ -38,3 +38,16 @@ def df_schema(
             role = "feature"
         columns[col] = {"dtype": df[col].dtype.name, "role": role}
     return columns
+
+
+def dataset_summary(ds: pd.DataFrame, label_column: str):
+    total = len(ds)
+    positives = ds[label_column].sum()
+    negatives = total - positives
+    return {
+        "total": total,
+        "positives": positives,
+        "negatives": negatives,
+        "prevalence": positives / total,
+        "recommended_loss_positive_weight": positives / negatives,
+    }

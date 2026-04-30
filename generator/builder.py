@@ -7,7 +7,7 @@ from lakefs.client import Client
 import duckdb
 from duckdb import DuckDBPyConnection
 
-from .utils import get_local_repo, find_paths, sha256str, df_schema
+from .utils import get_local_repo, find_paths, dataset_summary, sha256str, df_schema
 
 default_datasets_dir = "./"
 
@@ -74,19 +74,19 @@ def build(args):
         git_ref = repo.head.ref.name
 
     lakefs_host = os.getenv("LAKEFS_HOST")
-    if lakefs_host is None or lakefs_host == "":
-        raise ValueError("The variable LAKEFS_HOST MUST be set.")
 
     lakefs_username = os.getenv("LAKEFS_USERNAME")
-    if lakefs_username is None or lakefs_username == "":
+    if (lakefs_username is None or lakefs_username == "") and lakefs_host is not None:
         raise ValueError("The variable LAKEFS_USERNAME MUST be set.")
 
     lakefs_password = os.getenv("LAKEFS_PASSWORD")
-    if lakefs_password is None or lakefs_password == "":
+    if (lakefs_password is None or lakefs_password == "") and lakefs_host is not None:
         raise ValueError("The variable LAKEFS_PASSWORD MUST be set.")
 
     lakefs_repository = os.getenv("LAKEFS_REPOSITORY")
-    if lakefs_repository is None or lakefs_repository == "":
+    if (
+        lakefs_repository is None or lakefs_repository == ""
+    ) and lakefs_host is not None:
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
     not_found = find_paths([duckdb_db, metadata_file])
@@ -167,11 +167,11 @@ def build(args):
 
     print("Splitting features and labels...")
     X_train: pd.DataFrame = train_ds.drop(label, axis=1)
-    Y_train: pd.Series = train_ds["hospital_expire_flag"]  # noqa: F841
-    X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    Y_val: pd.Series = val_ds["hospital_expire_flag"]  # noqa: F841
-    X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    Y_test: pd.Series = test_ds["hospital_expire_flag"]  # noqa: F841
+    # Y_train: pd.Series = train_ds["hospital_expire_flag"]  # noqa: F841
+    # X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    # Y_val: pd.Series = val_ds["hospital_expire_flag"]  # noqa: F841
+    # X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
+    # Y_test: pd.Series = test_ds["hospital_expire_flag"]  # noqa: F841
 
     print("Computing training set statistics...")
     stats = {  # noqa: F841
@@ -207,12 +207,9 @@ def build(args):
         "splits": {
             "strategy": "first_stay_per_subject_firstcxr_random_split",
             "random_seed": 42,
-            "train_rows": len(train_ds),
-            "val_rows": len(val_ds),
-            "test_rows": len(test_ds),
-            "train_positives": int(train_ds[train_ds[label] == 1][label].sum()),
-            "val_positives": int(val_ds[val_ds[label] == 1][label].sum()),
-            "test_positives": int(test_ds[test_ds[label] == 1][label].sum()),
+            "train": dataset_summary(train_ds, label),
+            "validation": dataset_summary(val_ds, label),
+            "test": dataset_summary(test_ds, label),
         },
         "files": {
             "ds_train.csv": {"sha256": sha256str(train_ds_csv)},
@@ -231,36 +228,49 @@ def build(args):
         os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
         index=False,
     )
+
     with open(
         os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
     ) as f:
         json.dump(stats, f)
+
+    with open(
+        os.getenv("DATASET_MANIFEST_FILE", default_datasets_dir + "manifest.json"), "w"
+    ) as f:
+        json.dump(stats, f)
+
     val_ds.to_csv(
         os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
         index=False,
     )
+
     test_ds.to_csv(
         os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
         index=False,
     )
 
-    lclient = Client(
-        host=lakefs_host, username=lakefs_username, password=lakefs_password
-    )
-    lrepo = lakefs.Repository(lakefs_repository, client=lclient)
-    # create a build/${code-ref}-${code-sha}
-    branch = lrepo.branch(lakefs_branch).create(
-        source_reference="master", exist_ok=True
-    )
+    if lakefs_host:
+        lclient = Client(
+            host=lakefs_host, username=lakefs_username, password=lakefs_password
+        )
+        lrepo = lakefs.Repository(lakefs_repository, client=lclient)
 
-    branch.object("ds_train.csv").upload(data=train_ds_csv)
-    branch.object("ds_val.csv").upload(data=val_ds_csv)
-    branch.object("ds_test.csv").upload(data=test_ds_csv)
-    branch.object("stats.json").upload(data=json_stats)
-    branch.object("manifest.json").upload(data=json.dumps(manifest))
-    branch.object("schema.json").upload(data=json.dumps(schema))
+        # create a build/${code-ref}-${code-sha}
+        branch = lrepo.branch(lakefs_branch).create(
+            source_reference="master", exist_ok=True
+        )
 
-    branch.commit(message=f"Generated by {git_ref}/{git_sha}", metadata={})
+        branch.object("ds_train.csv").upload(data=train_ds_csv)
+        branch.object("ds_val.csv").upload(data=val_ds_csv)
+        branch.object("ds_test.csv").upload(data=test_ds_csv)
+        branch.object("stats.json").upload(data=json_stats)
+        branch.object("manifest.json").upload(data=json.dumps(manifest))
+        branch.object("schema.json").upload(data=json.dumps(schema))
+
+        branch.commit(
+            message=f"Generated by {git_ref}/{git_sha}",
+            metadata={"builder_ref": git_ref, "builder_sha": git_sha},
+        )
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:
