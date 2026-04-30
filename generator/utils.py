@@ -49,7 +49,6 @@ def dataset_summary(ds: pd.DataFrame, label_column: str):
         "positives": positives,
         "negatives": negatives,
         "prevalence": positives / total,
-        "recommended_loss_positive_weight": positives / negatives,
     }
 
 
