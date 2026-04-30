@@ -64,6 +64,7 @@ continuous_variables = [
 ]
 
 label = "hospital_expire_flag"
+default_dataset_version = "v001"
 
 
 def build(args):
@@ -98,6 +99,8 @@ def build(args):
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
     output_dir = os.getenv("DATASET_OUTPUT_DIR", default_datasets_dir).rstrip("/") + "/"
+
+    dataset_version = os.getenv("DATASET_VERSION", default_dataset_version)
 
     not_found = find_paths([duckdb_db, metadata_file])
     if len(not_found) != 0:
@@ -249,6 +252,9 @@ def build(args):
         json.dump(schema, f, indent=2, sort_keys=True)
 
     if lakefs_host:
+        lakefs_prefix = (
+            "multimodal-icu-mortality-24h/" + dataset_version.rstrip("/") + "/"
+        )
         lclient = Client(
             host=lakefs_host, username=lakefs_username, password=lakefs_password
         )
@@ -259,14 +265,14 @@ def build(args):
             source_reference="master", exist_ok=True
         )
 
-        branch.object("ds_train.csv").upload(data=train_ds_csv)
-        branch.object("ds_val.csv").upload(data=val_ds_csv)
-        branch.object("ds_test.csv").upload(data=test_ds_csv)
-        branch.object("stats.json").upload(data=json_stats)
-        branch.object("manifest.json").upload(
+        branch.object(lakefs_prefix + "ds_train.csv").upload(data=train_ds_csv)
+        branch.object(lakefs_prefix + "ds_val.csv").upload(data=val_ds_csv)
+        branch.object(lakefs_prefix + "ds_test.csv").upload(data=test_ds_csv)
+        branch.object(lakefs_prefix + "stats.json").upload(data=json_stats)
+        branch.object(lakefs_prefix + "manifest.json").upload(
             data=json.dumps(manifest, indent=2, sort_keys=True)
         )
-        branch.object("schema.json").upload(
+        branch.object(lakefs_prefix + "schema.json").upload(
             data=json.dumps(schema, indent=True, sort_keys=True)
         )
 
