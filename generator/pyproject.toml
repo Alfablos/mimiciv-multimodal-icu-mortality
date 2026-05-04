@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmim-generator"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.5.1",
+  "gitpython>=3.1.46",
+  "lakefs>=0.16.0",
+  "pandas<3.0",
+  "scikit-learn>=1.8.0",
+  "mmim-store"
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+namespaces = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv.sources]
+mmim-store = { path = "../store" }

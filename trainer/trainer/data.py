@@ -1,5 +1,4 @@
 import pandas as pd
-# import pylibjpeg # decompression backend for dicom pixel data #TODO
 
 
 import torch
@@ -38,7 +37,7 @@ class MIMICReduced(Dataset):
         df: pd.DataFrame,
         dataset_stats: dict[str, dict[str, float]],
         images_base_dir: str,
-        images_extension: str = "dcm",
+        images_extension: str = "jpg",
         label_column: str = "hospital_expire_flag",
         debug: bool = False,
         limit: float | None = None,
@@ -143,19 +142,7 @@ class MIMICReduced(Dataset):
     def __getitem__(self, i) -> tuple[Tensor, Tensor, Tensor]:
         image_path = self.image_paths[i]
 
-        if self.images_extension == "dcm" or self.images_extension == "dicom":
-            # 1. Decompress ACCORDING TO PYDICOM DOCS? pylibjpeg is available
-            # 2. Apply VOI LUTs (Value of Interest Look-Up Tables) to standardize pixel values
-            #    across vendors #TODO
-
-            # # minmax normalization to reduce peaks of 12-16 bit dicom image
-            # pixels = (pixels - min(pixels)) / (max(pixels) - min(pixels) + 1e-8)
-            # print(data.PhotochromaticInterpretation)
-            # print(pixels.shape)
-            raise NotImplementedError("Not yet implemented")
-
-        else:  # jpg
-            image = tvio.read_image(image_path, mode=tvio.ImageReadMode.RGB)
+        image = tvio.read_image(image_path, mode=tvio.ImageReadMode.RGB)
 
         # check if the image needs padding to have a 1:1 ration before resize
         image = self.transforms(image)

@@ -7,6 +7,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.set_defaults(func=parser.print_help)
 
+    parser.add_argument("--debug", type=bool, default=False)
+
     commands = parser.add_subparsers()
 
     build_cmd = commands.add_parser(
@@ -37,6 +39,21 @@ if __name__ == "__main__":
         required=True,
         help="""The file containing the metadata for MIMIC-CXR,
                 that is actually stored in the MIMIC-CXR-JPG dataset.""",
+    )
+
+    build_cmd.add_argument(
+        "-i",
+        "--images-base-dir",
+        "--images-basedir",
+        "--images-dir",
+        required=False,
+        help="""
+        The path to the root of the images dataset and its alias (no spaces allowed in the alias). If not provided checks will be skipped.
+        Format: ./path/to/dir@alias. Example: /home/myuser/datasets/mimic-images@mimic-cxr-jpg
+        """,
+    )
+    build_cmd.add_argument(
+        "-o", "--output-dir", "--out-dir", "--out", type=str, default="out"
     )
 
     build_cmd.set_defaults(func=build)

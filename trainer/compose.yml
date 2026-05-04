@@ -1,0 +1,39 @@
+services:
+  trainer:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    entrypoint: /app/entrypoint.sh
+    init: true
+    restart: "no"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=0
+              capabilities: [gpu]
+    shm_size: 8gb
+    working_dir: /app
+    environment:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://host.docker.internal:5000}
+      MLFLOW_TRACKING_USERNAME: ${MLFLOW_TRACKING_USERNAME:-admin}
+      MLFLOW_TRACKING_PASSWORD: ${MLFLOW_TRACKING_PASSWORD:-password1234}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-Multimodal ICU mortality}
+      TRAINING_DATASET_FILE: /app/dataset/ds_train.csv
+      VALIDATION_DATASET_FILE: /app/dataset/ds_val.csv
+      DATASET_STATS_FILE: /app/dataset/stats.json
+      DATASET_IMAGES_BASEDIR: /app/dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files
+      DATASET_IMAGES_EXTENSION: ${DATASET_IMAGES_EXTENSION:-jpg}
+      MMIM_BATCH_SIZE: ${MMIM_BATCH_SIZE:-32}
+      MMIM_EPOCHS: ${MMIM_EPOCHS:-10}
+      MMIM_DROPOUT: ${MMIM_DROPOUT:-0.3}
+      MMIM_LEARNING_RATE: ${MMIM_LEARNING_RATE:-0.0001}
+      MMIM_TRAIN_LIMIT: ${MMIM_TRAIN_LIMIT:-1.0}
+      MMIM_NUM_WORKERS: ${MMIM_NUM_WORKERS:-4}
+      MMIM_DEBUG: ${MMIM_DEBUG:-false}
+    volumes:
+      - ${TRAINER_DATASET_DIR:-./dataset}:/app/dataset
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

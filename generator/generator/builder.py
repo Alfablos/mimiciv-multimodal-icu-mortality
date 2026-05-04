@@ -1,13 +1,32 @@
+from pathlib import Path
 import json
 import os
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import lakefs
+from lakefs.client import Client
 import duckdb
 from duckdb import DuckDBPyConnection
 
-from .utils import find_paths
+from .utils import (
+    get_local_repo,
+    find_paths,
+    dataset_summary,
+    sha256str,
+    df_schema,
+    leakage_check,
+    compute_pos_negs,
+    infer_images_extension,
+    build_image_paths,
+)
 
-default_datasets_dir = "./"
+from store.filesystem import FilesystemWriteOnlyStore
+from store.lakefs import LakeFSWriteOnlyStore
+
+
+DATASET_NAME = "multimodal-icu-mortality-24h"
+
+supported_image_extensions = ["jpg", "jpeg", "dicom", "dcm"]
 
 core_features_allowed_missing = [
     "glucose",
@@ -54,22 +73,81 @@ continuous_variables = [
     "spO2_max",
 ]
 
+label = "hospital_expire_flag"
+default_dataset_version = "v001"
+random_seed = 42
+
 
 def build(args):
     duckdb_db = args.database_path
-    images_basedir = args.images_basedir
     metadata_file = args.metadata_file
-    not_found = find_paths([duckdb_db, images_basedir, metadata_file])
+    images_base_dir = args.images_base_dir
+    debug = args.debug
+
+    if images_base_dir is not None:
+        split = images_base_dir.split("@")
+        if len(split) != 2:
+            raise ValueError(f"{images_base_dir} is not a valid <dir>@<alias> string.")
+        if len(split[1].split(" ")) > 1:
+            raise ValueError(
+                f"{images_base_dir} is not a valid <dir>@<alias> string. The alias cannot contain spaces."
+            )
+        images_base_dir = split[0]
+        images_base_dir_alias = split[1].rstrip("/")
+
+    git_sha = os.getenv("GIT_SHA")
+    git_ref = os.getenv("GIT_REF")
+
+    if (not git_ref or git_ref == "") or (not git_sha or git_sha == ""):
+        repo = get_local_repo()
+
+    if git_ref is None or git_ref == "":
+        git_ref = repo.head.ref.name
+    if git_sha is None or git_sha == "":
+        git_sha = repo.head.commit.hexsha
+
+    lakefs_host = os.getenv("LAKEFS_HOST")
+    commit_to_lakefs = lakefs_host is not None and lakefs_host != ""
+
+    lakefs_access_key_id = os.getenv("LAKEFS_ACCESS_KEY_ID")
+    if (
+        lakefs_access_key_id is None or lakefs_access_key_id == ""
+    ) and commit_to_lakefs:
+        raise ValueError("The variable LAKEFS_ACCESS_KEY_ID MUST be set.")
+
+    lakefs_secret_access_key = os.getenv("LAKEFS_SECRET_ACCESS_KEY")
+    if (
+        lakefs_secret_access_key is None or lakefs_secret_access_key == ""
+    ) and commit_to_lakefs:
+        raise ValueError("The variable LAKEFS_SECRET_ACCESS_KEY MUST be set.")
+
+    lakefs_repository = os.getenv("LAKEFS_REPOSITORY")
+    if (lakefs_repository is None or lakefs_repository == "") and commit_to_lakefs:
+        raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
+
+    output_dir = os.getenv("DATASET_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
+
+    dataset_version = os.getenv("DATASET_VERSION", default_dataset_version)
+
+    not_found = find_paths([duckdb_db, metadata_file])
     if len(not_found) != 0:
         raise FileNotFoundError(f"Unable to find files: {', '.join(not_found)}")
 
+    if commit_to_lakefs:
+        lakefs_branch = (
+            "build_" + git_ref.replace("/", "-").replace("_", "-") + "-" + git_sha[:9]
+        )
+        print(f"Will push to LakeFS branch: {lakefs_branch}")
+
     dconn = duckdb.connect(database=duckdb_db, read_only=True)
-    images_manifest = build_images_manifest(
+    images_manifest, images_query = build_images_manifest(
         connection=dconn, metadata_file=metadata_file
     )
-    cohort = build_cohort(connection=dconn, images_manifest=images_manifest)
+    cohort, cohort_query = build_cohort(
+        connection=dconn, images_manifest=images_manifest
+    )
 
-    features = build_features(connection=dconn, cohort=cohort)
+    features, labs_n_vitals_query = build_features(connection=dconn, cohort=cohort)
     initial_dataset = cohort.join(
         features.set_index("subject_id").drop(
             ["stay_id", "gender", "age", "hospital_expire_flag"], axis=1
@@ -79,9 +157,39 @@ def build(args):
     )
     print(
         "Done querying the DB, I'm now left with the following columns:",
-        initial_dataset.columns.to_list(),
+        ", ".join(initial_dataset.columns.to_list()),
         "\n",
     )
+
+    if images_base_dir is not None:
+        images_extension = infer_images_extension(
+            images_base_dir, supported_image_extensions
+        )
+        if images_extension is None:
+            raise ValueError(
+                f"Directory `{images_base_dir}` contains no image in supported formats {', '.join(supported_image_extensions)}"
+            )
+
+        local_image_paths = build_image_paths(
+            ds=initial_dataset,
+            base_dir=images_base_dir,
+            images_extension=images_extension,
+        )
+
+        print("About to check needed images availability...")
+        not_found = []
+        for i in local_image_paths:
+            if not Path(i).exists():
+                not_found.append(i)
+        if not_found:
+            raise FileNotFoundError(
+                f"The following images are required but were not found:\n {'\n'.join(not_found)}"
+            )
+        print("Images check OK.")
+    else:
+        print(
+            "WARNING: --images-base-dir was not provided. I'm unable to check for missing images. You're on your own."
+        )
 
     print("About to check for null values. ")
     for feat in core_features_allowed_missing:
@@ -105,9 +213,11 @@ def build(args):
         )
 
     train_ds, other_ds = train_test_split(
-        initial_dataset, test_size=0.2, shuffle=True, random_state=42
+        initial_dataset, test_size=0.2, shuffle=True, random_state=random_seed
     )
-    val_ds, test_ds = train_test_split(other_ds, test_size=0.1)
+    val_ds, test_ds = train_test_split(
+        other_ds, test_size=0.5, shuffle=True, random_state=random_seed
+    )
 
     medians: dict[str, float] = dict()
 
@@ -127,12 +237,7 @@ def build(args):
     test_ds = prepare_set(test_ds, medians=medians)
 
     print("Splitting features and labels...")
-    X_train: pd.DataFrame = train_ds.drop("hospital_expire_flag", axis=1)
-    # Y_train: pd.DataFrame = train_ds["hospital_expire_flag"]  # noqa: F841
-    # X_val: pd.DataFrame = val_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_val: pd.DataFrame = val_ds["hospital_expire_flag"]  # noqa: F841
-    # X_test: pd.DataFrame = test_ds.drop("hospital_expire_flag", axis=1)  # noqa: F841
-    # Y_test: pd.DataFrame = test_ds["hospital_expire_flag"]  # noqa: F841
+    X_train: pd.DataFrame = train_ds.drop(label, axis=1)
 
     print("Computing training set statistics...")
     stats = {  # noqa: F841
@@ -140,26 +245,169 @@ def build(args):
         "std": X_train[continuous_variables].std().to_dict(),
     }
 
-    # Write files according to variables! $TRAINING_DATASET_FILE, $VALIDATION_DATASET_FILE, $DATASET_STATS_FILE and a ds_test.csv
-    train_ds.to_csv(
-        os.getenv("TRAINING_DATASET_FILE", default_datasets_dir + "ds_train.csv"),
-        index=False,
+    train_ds_csv = train_ds.to_csv(index=False, lineterminator="\n")
+    val_ds_csv = val_ds.to_csv(index=False, lineterminator="\n")
+    test_ds_csv = test_ds.to_csv(index=False, lineterminator="\n")
+    json_stats = json.dumps(stats, indent=2, sort_keys=True)
+
+    schema = df_schema(
+        train_ds, label_column=label, id_columns=["subject_id", "study_id", "dicom_id"]
     )
-    with open(
-        os.getenv("DATASET_STATS_FILE", default_datasets_dir + "stats.json"), "w"
-    ) as f:
-        json.dump(stats, f)
-    val_ds.to_csv(
-        os.getenv("VALIDATION_DATASET_FILE", default_datasets_dir + "ds_val.csv"),
-        index=False,
-    )
-    test_ds.to_csv(
-        os.getenv("TEST_DATASET_FILE", default_datasets_dir + "ds_test.csv"),
-        index=False,
+    json_schema = json.dumps(obj=schema, indent=2, sort_keys=True)
+
+    queries = {
+        "images_query_sha": sha256str(images_query),
+        "images_query": images_query,
+        "cohort_query_sha": sha256str(cohort_query),
+        "cohort_query": cohort_query,
+        "features_query_sha": sha256str(labs_n_vitals_query),
+        "features_query": labs_n_vitals_query,
+    }
+
+    _, train_positives, train_negatives = compute_pos_negs(
+        ds=train_ds, label_column=label
     )
 
+    tabular_data_prefix = DATASET_NAME + "/" + dataset_version
+    image_data_prefix = tabular_data_prefix + "/" + images_base_dir_alias
 
-def prepare_set(df: pd.DataFrame, medians: dict[str, float]):
+    manifest = {
+        "dataset": DATASET_NAME,
+        "dataset_version": dataset_version,
+        "schema_version": "v1",
+        "prediction_time": "icu_intime",
+        "lookback_window_hours": 24,
+        "sources": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
+        "generator_code": {
+            "git_sha": git_sha,
+            "git_ref": git_ref,
+        },
+        "queries": queries,
+        "splits": {
+            "strategy": "first_stay_per_subject_first_cxr_random_split",
+            "random_seed": random_seed,
+            "train": dataset_summary(train_ds, label),
+            "validation": dataset_summary(val_ds, label),
+            "test": dataset_summary(test_ds, label),
+            "leakage_checks": leakage_check(train_ds, val_ds, test_ds),
+        },
+        "data": {
+            "tabular": {
+                "extension": "csv",
+                "storage": "lakefs" if commit_to_lakefs else "local",
+                "branch": lakefs_branch if commit_to_lakefs else None,
+                "prefix": tabular_data_prefix,
+                "files": {
+                    "training": {
+                        "path": "ds_train.csv",
+                        "format": "csv",
+                        "sha256": sha256str(train_ds_csv),
+                    },
+                    "validation": {
+                        "path": "ds_val.csv",
+                        "format": "csv",
+                        "sha256": sha256str(val_ds_csv),
+                    },
+                    "test": {
+                        "path": "ds_test.csv",
+                        "format": "csv",
+                        "sha256": sha256str(test_ds_csv),
+                    },
+                    "statistics": {
+                        "path": "stats.json",
+                        "format": "json",
+                        "sha256": sha256str(json_stats),
+                    },
+                    "schema": {
+                        "path": "schema.json",
+                        "format": "json",
+                        "sha256": sha256str(json_schema),
+                    },
+                },
+            },
+            "images": {
+                "extension": images_extension,
+                "storage": "lakefs" if commit_to_lakefs else "local",
+                "repo": lakefs_repository if commit_to_lakefs else None,
+                "branch": lakefs_branch if commit_to_lakefs else None,
+                "prefix": image_data_prefix,
+                "path_template": "p{subject_id[:2]}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
+            },
+        },
+        "defaults": {"loss_pos_weight": float(train_positives / train_negatives)},
+    }
+
+    json_manifest = json.dumps(manifest, indent=2, sort_keys=True)
+
+    commit_message = f"Generated by mmim-generator {git_ref}/{git_sha}"
+    commit_metadata: dict[str, str] = {"builder_ref": git_ref, "builder_sha": git_sha}
+
+    fs_store = FilesystemWriteOnlyStore(
+        output_dir, prefix=tabular_data_prefix, debug=debug
+    )
+    fs_store.write_text(path="ds_train.csv", data=train_ds_csv)
+    fs_store.write_text(path="ds_val.csv", data=val_ds_csv)
+    fs_store.write_text(path="ds_test.csv", data=test_ds_csv)
+    fs_store.write_text(path="stats.json", data=json_stats)
+    fs_store.write_text(path="schema.json", data=json_schema)
+    fs_store.write_text(
+        path="manifest.json", data=json_manifest, with_prefix=False
+    )  # puts the manifest at the root!
+
+    if images_base_dir:
+        # abstracts away local/remote storage stripping the prefix and preserving only the last part
+        # these paths will be mounted on the local/remote prefix
+        pure_paths = [Path(p).relative_to(images_base_dir) for p in local_image_paths]
+        # change prefix to images prefix: data will now be written to a new prefix
+        fs_store.set_prefix(prefix=image_data_prefix)
+        for local, pure in zip(local_image_paths, pure_paths):
+            with open(local, "rb") as ireader:
+                fs_store.write_bytes(path=pure, data=ireader.read(), exists_ok=True)
+
+    info = fs_store.commit(message=commit_message, metadata=commit_metadata)
+    print(info)
+
+    if commit_to_lakefs:
+        lclient = Client(
+            host=lakefs_host,
+            username=lakefs_access_key_id,
+            password=lakefs_secret_access_key,
+        )
+        lrepo: lakefs.Repository = lakefs.Repository(lakefs_repository, client=lclient)
+        lake_store = LakeFSWriteOnlyStore(
+            repository=lrepo,
+            branch=lakefs_branch,
+            base_branch="master",
+            prefix=tabular_data_prefix,
+            debug=debug,
+        )
+        lake_store.write_text(path="ds_train.csv", data=train_ds_csv)
+        lake_store.write_text(path="ds_val.csv", data=val_ds_csv)
+        lake_store.write_text(path="ds_test.csv", data=test_ds_csv)
+        lake_store.write_text(path="stats.json", data=json_stats)
+        lake_store.write_text(path="schema.json", data=json_schema)
+        lake_store.write_text(
+            path="manifest.json", data=json_manifest, with_prefix=False
+        )
+
+        if images_base_dir is not None:
+            lake_store.set_prefix(prefix=image_data_prefix)
+
+            for local, pure in zip(local_image_paths, pure_paths):
+                with open(local, "rb") as ireader:
+                    lake_store.write_bytes(
+                        path=pure, data=ireader.read(), exists_ok=True
+                    )
+
+        commit = lake_store.commit(
+            message=commit_message,
+            metadata=commit_metadata,
+        )
+        print(f"Successfully committed on {lakefs_branch} with commit id {commit.id}")
+        return commit.id
+
+
+def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:
     final_df = df.drop(["icu_intime", "stay_id", "hadm_id"], axis=1)
     # Encoding gender assuming M and F are the only values in the dataset (no 'f', 'm' or others)
     # Encoding M as 0, F as 1
@@ -189,7 +437,9 @@ def prepare_set(df: pd.DataFrame, medians: dict[str, float]):
     return final_df
 
 
-def build_images_manifest(connection: DuckDBPyConnection, metadata_file: str):
+def build_images_manifest(
+    connection: DuckDBPyConnection, metadata_file: str
+) -> tuple[pd.DataFrame, str]:
     images_q = f"""
     WITH cxr_meta_parsed AS (
 	SELECT
@@ -226,8 +476,8 @@ def build_images_manifest(connection: DuckDBPyConnection, metadata_file: str):
             c.dicom_id,
             c.cxr_time,
             -- time between image (as dicom_id) and ICU admission. Used later to select which image to take if multiples
-            -- No ABS(): I'm setting cxr_time <= T0 in the WHERE clause; (intime - cxr_time) cannot be negative
-            date_diff('seconds', s.intime, c.cxr_time) as time_diff_cxr
+            -- Skipping ABS() because since c.cxr_time < s.intime date_diff(...) will return a positive value
+            date_diff('seconds', c.cxr_time, s.intime) as time_diff_cxr
         FROM stays_by_patient AS s
         INNER JOIN cxr_meta_parsed AS c
         ON CAST(s.subject_id AS VARCHAR) = CAST(c.subject_id AS VARCHAR)
@@ -250,10 +500,12 @@ def build_images_manifest(connection: DuckDBPyConnection, metadata_file: str):
     SELECT * EXCLUDE(cxr_number) FROM deduplicated
 	WHERE cxr_number = 1;
     """
-    return connection.query(images_q).df()
+    return connection.query(images_q).df(), images_q
 
 
-def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.DataFrame:
+def build_cohort(
+    connection: DuckDBPyConnection, images_manifest: pd.DataFrame
+) -> tuple[pd.DataFrame, str]:
     # images_manifest is used in this query, DuckDB supports
     # referencing pandas dataframes in queries directly (see at the end)
     cohort_q = """
@@ -301,12 +553,12 @@ def build_cohort(connection: DuckDBPyConnection, images_manifest: str) -> pd.Dat
     ;
     """
 
-    return connection.query(cohort_q).df()
+    return connection.query(cohort_q).df(), cohort_q
 
 
 def build_features(
     connection: DuckDBPyConnection, cohort: pd.DataFrame
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, str]:
     # TODO: parametrize
 
     labs_n_vitals_q = """
@@ -433,4 +685,4 @@ def build_features(
 	ON g.stay_id = ev.stay_id
     """
 
-    return connection.query(labs_n_vitals_q).df()
+    return connection.query(labs_n_vitals_q).df(), labs_n_vitals_q

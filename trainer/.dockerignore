@@ -1,0 +1,37 @@
+*
+
+# Allow only trainer-owned build inputs.
+!./Dockerfile
+!./entrypoint.sh
+!./pyproject.toml
+!./uv.lock
+!./trainer
+!./trainer/**/*.py
+
+# Auditable deny patterns for secrets and generated/local artifacts.
+.env
+.envrc
+dataset
+dataset/**
+data
+data/**
+mlruns
+mlruns/**
+mlartifacts
+mlartifacts/**
+*.csv
+*.duckdb
+*.ipynb
+__pycache__
+__pycache__/**
+.pytest_cache
+.pytest_cache/**
+.ruff_cache
+.ruff_cache/**
+*.png
+*.jpg
+*.jpeg
+*.dcm
+*.parquet
+*.pkl
+*.pt

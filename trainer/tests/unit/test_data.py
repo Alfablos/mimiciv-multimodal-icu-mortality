@@ -1,8 +1,10 @@
+from pathlib import Path
+
 from pytest import raises
 import torch
 
 
-from data import init_test_ds, current_features
+from data import init_test_ds, current_features, IMAGES_DIR
 
 
 def test_ds_has_right_features():
@@ -26,9 +28,10 @@ def test_ds_wrong_image_extensions_are_rejected():
 
 def test_ds_returns_images_correctly():
     ds = init_test_ds()
+    images_dir = Path(IMAGES_DIR)
     paths = [
-        "./tests/trainer/unit/images/p11/p11111111/s3030303/0.jpg",
-        "./tests/trainer/unit/images/p22/p22222222/s8080808/1.jpg",
+        str(images_dir / "p11" / "p11111111" / "s3030303" / "0.jpg"),
+        str(images_dir / "p22" / "p22222222" / "s8080808" / "1.jpg"),
     ]
 
     for i, path in enumerate(paths):

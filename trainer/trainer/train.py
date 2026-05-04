@@ -212,7 +212,12 @@ def get_metrics(preds, labels):
     }
 
 
-def train_start(_: Namespace):
+def train_cli(args: Namespace):
+
+    return start_train()
+
+
+def start_train():
     if hyperparameters["train_limit"] != 1.0:
         print(
             f"WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid."
@@ -223,8 +228,8 @@ def train_start(_: Namespace):
     mlflow.set_experiment(
         os.getenv("MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality")
     )
-    mlflow.config.enable_system_metrics_logging()
-    mlflow.config.set_system_metrics_sampling_interval(5)
+    mlflow.config.disable_system_metrics_logging()
+    # mlflow.config.set_system_metrics_sampling_interval(5)
 
     with mlflow.start_run(
         run_name="fusion_bs"
@@ -240,7 +245,10 @@ def train_start(_: Namespace):
             if hyperparameters["train_limit"] != 1.0
             else ""
         )
-    ):
+    ) as r:
+        run_id = r.info.run_id
+        mlflow.log_param("run_id", run_id)
+
         metadata = log_metadata()
         for k, v in metadata.items():
             print(f"{k} => {v}")
@@ -260,7 +268,7 @@ def train_start(_: Namespace):
             limit=hyperparameters["train_limit"],
         )
         train_dl = DataLoader(
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
             dataset=train_ds,
             shuffle=dataset_shuffle,
             batch_size=hyperparameters["batch_size"],
@@ -278,9 +286,8 @@ def train_start(_: Namespace):
             # allowes me to iterate faster
             limit=hyperparameters["train_limit"],
         )
-
         val_dl = DataLoader(
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
             dataset=val_ds,
             shuffle=dataset_shuffle,
             batch_size=hyperparameters["batch_size"],
@@ -305,3 +312,5 @@ def train_start(_: Namespace):
             train_loader=train_dl,
             val_loader=val_dl,
         )
+
+        return run_id

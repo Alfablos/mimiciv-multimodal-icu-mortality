@@ -1,31 +1,39 @@
 [project]
-name = "deathpred-24h"
+name = "mmim"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multimodal ICU Mortality prediction model"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
-    "argparse>=1.4.0",
-    "duckdb>=1.5.1",
-    "gitpython>=3.1.46",
-    "ipykernel>=7.2.0",
+    "dagster>=1.13.3",
     "lakefs>=0.16.0",
-    "matplotlib>=3.10.8",
-    "mlflow>3.11.0",
-    "pandas<3.0",
-    "pandas-stubs<3.0",
-    "pip>=26.0.1",
-    "protobuf<7.0",
-    "pydicom>=3.0.2",
-    "pylibjpeg>=2.1.0",
-    "pytest>=9.0.3",
-    "scikit-learn>=1.8.0",
-    "seaborn>=0.13.2",
-    "torch>=2.11.0",
-    "torchvision>=0.26.0",
-    # "torchxrayvision>=1.4.0",
+    "pandas<=3.0",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+testpaths = ["generator/tests", "trainer/tests"]
+pythonpath = ["generator/generator", "trainer/trainer", "store/store", "."]
+
+[tool.dg]
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "orchestrator"
+registry_modules = [
+    "dagster_gs.components.*",
+]
+
+[dependency-groups]
+dev = [
+    "mmim-generator",
+    "mmim-trainer",
+    "mmim-store",
+    "pytest",
+    "dagster-dg-cli",
+    "dagster-webserver",
+]
+
+[tool.uv.sources]
+mmim-generator = { path = "generator" }
+mmim-trainer = { path = "trainer" }
+mmim-store = { path = "store" }

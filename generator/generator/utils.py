@@ -14,6 +14,20 @@ def sha256str(text: str):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def infer_images_extension(path: str, formats: list[str]) -> str | None:
+    for format in formats:
+        images = Path(path).glob(f"**/*.{format}", case_sensitive=False)
+        try:
+            # Even one image in that format makes the function
+            # return that format
+            _ = next(images)
+            return format
+        except StopIteration:
+            continue
+
+    return None
+
+
 def get_local_repo() -> Repo:
     try:
         r = Repo(".")
@@ -40,10 +54,15 @@ def df_schema(
     return columns
 
 
-def dataset_summary(ds: pd.DataFrame, label_column: str):
+def compute_pos_negs(ds: pd.DataFrame, label_column: str):
     total = len(ds)
     positives = int(ds[label_column].sum())
     negatives = int(total - positives)
+    return total, positives, negatives
+
+
+def dataset_summary(ds: pd.DataFrame, label_column: str):
+    total, positives, negatives = compute_pos_negs(ds=ds, label_column=label_column)
     return {
         "total": total,
         "positives": positives,
@@ -67,3 +86,32 @@ def leakage_check(train_ds: pd.DataFrame, val_ds: pd.DataFrame, test_ds: pd.Data
         raise ValueError(f"Leakage tests not passed; leakage detected: {no_leakages}")
 
     return no_leakages
+
+
+def build_image_paths(ds: pd.DataFrame, base_dir: str, images_extension):
+    subject_ids = ds["subject_id"].astype(str)
+    study_ids = ds["study_id"].astype(str)
+    dicom_ids = ds["dicom_id"].astype(str)
+    return (
+        base_dir.rstrip("/")
+        + "/p"
+        + subject_ids.str[:2]
+        + "/p"
+        + subject_ids
+        + "/s"
+        + study_ids
+        + "/"
+        + dicom_ids
+        + "."
+        + images_extension.lstrip(".")
+    )
+
+
+def parse_ref_str(raw_ref: str) -> tuple[str, str]:
+    _split = raw_ref.split("@")
+    if len(_split) != 2:
+        raise ValueError(
+            f"Invalid syntax for provided ref `{raw_ref}`: valid format is <repo>@<ref>"
+        )
+    repo, ref = _split[0], _split[1]
+    return repo, ref

@@ -1,8 +1,10 @@
 from typing import Any
+
 import pandas as pd
 
 from trainer.data import MIMICReduced
 
+IMAGES_DIR = "tests/unit/images"
 
 batch_size = 2
 images_shape = (512, 512, 3)
@@ -192,7 +194,7 @@ def init_test_ds(**kwargs) -> MIMICReduced:
         "dataset_stats": stats,
         "label_column": "hospital_expire_flag",
         "images_extension": "jpg",
-        "images_base_dir": "./tests/trainer/unit/images",
+        "images_base_dir": str(IMAGES_DIR),
         "limit": None,
     }
     final_args = {**args, **kwargs}

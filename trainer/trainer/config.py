@@ -4,8 +4,6 @@ import os
 from .utils import int_from_env, float_from_env, bool_from_env
 
 # Available environment variables:
-# DATASET_LOCAL_DIR
-# BASE_DIR
 # TRAINING_DATASET_FILE
 # VALIDATION_DATASET_FILE
 # DATASET_STATS_FILE
@@ -26,21 +24,15 @@ from .utils import int_from_env, float_from_env, bool_from_env
 # needed due to heavily imbalanced label
 # This is a dataset property, do NOT modify unless you know what you're doing!
 # Be VERY CAREFUL when modifying `train_limit` as it really can impact this value!
-loss_pos_weight = float_from_env(
-    "MMIM_LOSS_POS_WEIGHT", 5160 / 936
-)  # positive weight is negatives / positives = (6096 - 936) / 936 !!
+# loss_pos_weight = read from the dataset manifest
 
 debug = os.getenv("MMIM_DEBUG", "false").lower() in ["true", "1", "yes"]
-
-train_csv = os.getenv("TRAINING_DATASET_FILE", "./dataset/ds_train.csv")
-val_csv = os.getenv("VALIDATION_DATASET_FILE", "./dataset/ds_val.csv")
-dataset_stats_file = os.getenv("DATASET_STATS_FILE", "./dataset/stats.json")
 
 image_base_dir = os.getenv(
     "DATASET_IMAGES_BASEDIR",
     "./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files",
 )
-image_extension = os.getenv("DATASET_IMAGES_EXTENSION", "dcm")
+image_extension = os.getenv("DATASET_IMAGES_EXTENSION", "jpg")
 
 dataset_shuffle = bool_from_env("MMIM_DATASET_SHUFFLE", True)
 default_num_workers = max(((cpu_count() or 1) // 2) - 2, 0)
