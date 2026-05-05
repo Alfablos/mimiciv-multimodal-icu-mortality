@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, UTC
 from pathlib import Path
 import json
 import os
@@ -20,8 +22,8 @@ from .utils import (
     build_image_paths,
 )
 
-from store.filesystem import FilesystemWriteOnlyStore
-from store.lakefs import LakeFSWriteOnlyStore
+from mmim.store.filesystem import FilesystemWriteOnlyStore
+from mmim.store.lakefs import LakeFSWriteOnlyStore
 
 
 DATASET_NAME = "multimodal-icu-mortality-24h"
@@ -127,15 +129,32 @@ def build(args):
 
     output_dir = os.getenv("DATASET_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
 
-    dataset_version = os.getenv("DATASET_VERSION", default_dataset_version)
+    dataset_version = os.getenv(
+        "MMIM_GENERATOR_DATASET_VERSION", default_dataset_version
+    )
+    build_id = os.getenv(
+        "MMIM_GENERATOR_BUILD_ID",
+        datetime.now(UTC).strftime("%Y%m%d_%H%M") + "-" + dataset_version,
+    )
 
-    not_found = find_paths([duckdb_db, metadata_file])
-    if len(not_found) != 0:
-        raise FileNotFoundError(f"Unable to find files: {', '.join(not_found)}")
+    not_found_required_files = find_paths(
+        [duckdb_db, metadata_file, images_base_dir]
+        if images_base_dir is not None
+        else [duckdb_db, metadata_file]
+    )
+    if len(not_found_required_files) != 0:
+        raise FileNotFoundError(
+            f"Unable to find files: {', '.join(not_found_required_files)}"
+        )
 
     if commit_to_lakefs:
         lakefs_branch = (
-            "build_" + git_ref.replace("/", "-").replace("_", "-") + "-" + git_sha[:9]
+            "build_"
+            + build_id
+            + "-"
+            + git_ref.replace("/", "-").replace("_", "-")
+            + "-"
+            + git_sha[:9]
         )
         print(f"Will push to LakeFS branch: {lakefs_branch}")
 
@@ -177,13 +196,13 @@ def build(args):
         )
 
         print("About to check needed images availability...")
-        not_found = []
+        not_found_required_files = []
         for i in local_image_paths:
             if not Path(i).exists():
-                not_found.append(i)
-        if not_found:
+                not_found_required_files.append(i)
+        if not_found_required_files:
             raise FileNotFoundError(
-                f"The following images are required but were not found:\n {'\n'.join(not_found)}"
+                f"The following images are required but were not found:\n {'\n'.join(not_found_required_files)}"
             )
         print("Images check OK.")
     else:
@@ -362,7 +381,9 @@ def build(args):
         fs_store.set_prefix(prefix=image_data_prefix)
         for local, pure in zip(local_image_paths, pure_paths):
             with open(local, "rb") as ireader:
-                fs_store.write_bytes(path=pure, data=ireader.read(), exists_ok=True)
+                fs_store.write_bytes(
+                    path=f"{pure}", data=ireader.read(), exists_ok=True
+                )
 
     info = fs_store.commit(message=commit_message, metadata=commit_metadata)
     print(info)
@@ -392,19 +413,57 @@ def build(args):
 
         if images_base_dir is not None:
             lake_store.set_prefix(prefix=image_data_prefix)
+            pure_paths_str = [f"{pp}" for pp in pure_paths]
 
-            for local, pure in zip(local_image_paths, pure_paths):
-                with open(local, "rb") as ireader:
-                    lake_store.write_bytes(
-                        path=pure, data=ireader.read(), exists_ok=True
+            # for local, pure in zip(local_image_paths, pure_paths_str):
+            #     with open(local, "rb") as ireader:
+            #         lake_store.write_bytes(
+            #             path=pure, data=ireader.read(), exists_ok=True
+            #         )
+
+            # multithreaded upload
+            uploaded = 0
+            skipped = 0
+
+            with ThreadPoolExecutor() as pool:
+                futures = [
+                    pool.submit(
+                        lambda local, pure: lake_store.write_file(
+                            local, pure, exists_ok=True
+                        ),
+                        local,
+                        pure,
                     )
+                    for local, pure in zip(local_image_paths, pure_paths_str)
+                ]
 
-        commit = lake_store.commit(
-            message=commit_message,
-            metadata=commit_metadata,
-        )
-        print(f"Successfully committed on {lakefs_branch} with commit id {commit.id}")
-        return commit.id
+                for future in as_completed(futures):
+                    result: str = future.result()
+                    if result == "skipped":
+                        skipped += 1
+                    if result == "uploaded":
+                        uploaded += 1
+
+            if debug:
+                print(f"Uploaded {uploaded} images.")
+                print(f"Skipped {skipped} images.")
+
+            if uploaded == 0 and skipped == len(local_image_paths):
+                print("Nothing to commit.")
+                return lake_store.get_branch().head.get_commit()
+            elif uploaded > 0 and skipped < len(local_image_paths):
+                commit_id = lake_store.commit(
+                    message=commit_message,
+                    metadata=commit_metadata,
+                )
+                print(
+                    f"Successfully committed on {lakefs_branch} with commit id {commit_id}"
+                )
+                return commit_id
+            else:
+                raise RuntimeError(
+                    f"Weird number of total elements: uploaded={0}, skipped={skipped}, total={uploaded + skipped} | Verify success criteria!"
+                )
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:

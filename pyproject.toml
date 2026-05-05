@@ -5,35 +5,49 @@ description = "Multimodal ICU Mortality prediction model"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "dagster>=1.13.3",
-    "lakefs>=0.16.0",
+    "lakefs>=0.16.0", # due to mlflow
     "pandas<=3.0",
 ]
 
+[project.optional-dependencies]
+generator = [
+  "duckdb>=1.5.1",
+  "gitpython>=3.1.46",
+  "scikit-learn>=1.8.0",
+]
+
+trainer = [
+  "gitpython>=3.1.46",
+  "matplotlib>=3.10.8",
+  "mlflow>3.11.0",
+  "numpy",
+  "scikit-learn>=1.8.0",
+  "torch>=2.11.0",
+  "torchvision>=0.26.0",
+]
+
+orchestrator = [
+    "dagster>=1.13.3",
+    "dagster-dg-cli>=1.13.3",
+    "dagster-webserver>=1.13.3",
+]
+
+[tool.uv]
+package = true
+
+[project.scripts]
+mmim = "mmim.cli:main"
+mmim-generator = "mmim.generator.main:main"
+mmim-trainer = "mmim.trainer.main:main"
+
 [tool.pytest.ini_options]
-testpaths = ["generator/tests", "trainer/tests"]
-pythonpath = ["generator/generator", "trainer/trainer", "store/store", "."]
+pythonpath = ["."]
 
 [tool.dg]
 directory_type = "project"
 
 [tool.dg.project]
-root_module = "orchestrator"
+root_module = "mmim.orchestrator"
 registry_modules = [
     "dagster_gs.components.*",
 ]
-
-[dependency-groups]
-dev = [
-    "mmim-generator",
-    "mmim-trainer",
-    "mmim-store",
-    "pytest",
-    "dagster-dg-cli",
-    "dagster-webserver",
-]
-
-[tool.uv.sources]
-mmim-generator = { path = "generator" }
-mmim-trainer = { path = "trainer" }
-mmim-store = { path = "store" }

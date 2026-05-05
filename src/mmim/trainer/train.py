@@ -10,9 +10,6 @@ from torch import nn, Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from .data import MIMICReduced
-from .gradcam import grad_cam
-from .models.fusion import Fusion
 import mlflow
 import os
 import json
@@ -25,6 +22,9 @@ from torch.nn import BCEWithLogitsLoss
 import mlflow.pytorch
 
 
+from .data import MIMICReduced
+from .gradcam import grad_cam
+from .models.fusion import Fusion
 from .config import (
     loss_pos_weight,
     dataset_stats_file,

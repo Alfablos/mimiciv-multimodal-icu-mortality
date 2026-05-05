@@ -1,9 +1,9 @@
 from argparse import ArgumentParser
 
-from .train import train_start
+from .train import train_cli
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.set_defaults(func=parser.print_help)
 
@@ -24,7 +24,11 @@ if __name__ == "__main__":
         help="a string containing the LakeFS repo name and ref, formatted as `<repo>@<ref>`",
     )
 
-    train_cmd.set_defaults(func=train_start)
+    train_cmd.set_defaults(func=train_cli)
 
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

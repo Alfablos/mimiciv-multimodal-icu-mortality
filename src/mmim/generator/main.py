@@ -1,9 +1,10 @@
+from os import cpu_count
 from argparse import ArgumentParser
 
 from .builder import build
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser()
     parser.set_defaults(func=parser.print_help)
 
@@ -55,8 +56,19 @@ if __name__ == "__main__":
     build_cmd.add_argument(
         "-o", "--output-dir", "--out-dir", "--out", type=str, default="out"
     )
+    build_cmd.add_argument(
+        "-w",
+        "--max-workers",
+        "--workers",
+        type=int,
+        default=int((cpu_count() or 16) / 2),
+    )
 
     build_cmd.set_defaults(func=build)
 
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

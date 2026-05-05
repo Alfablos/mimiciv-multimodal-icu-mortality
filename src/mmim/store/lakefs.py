@@ -1,7 +1,7 @@
 from typing import Any
 from pathlib import Path
 
-from lakefs import Repository
+from lakefs import Repository, Branch
 from lakefs.reference import Reference
 
 
@@ -20,7 +20,7 @@ class LakeFSReadOnlyStore(ReadOnlyStore):
 
         if self.debug:
             print(
-                f"Initialized LakeFS read-only store in ref `{self.ref}` (repo `{self.repository}`) with default prefix `{self.prefix}`"
+                f"Initialized LakeFSReadOnlyStore in ref `{self.ref}` (repo `{self.repository}`) with default prefix `{self.prefix}`"
             )
 
     def read_text(self, path: str, with_prefix: bool = True) -> str:
@@ -29,7 +29,7 @@ class LakeFSReadOnlyStore(ReadOnlyStore):
         )
         if self.debug:
             print(
-                f"LakeFS read-only store received text read request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}'"
+                f"LakeFSReadOnlyStore: received text read request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}'"
             )
         return self.ref.object(f"{fname}").reader(mode="r").read()
 
@@ -39,7 +39,7 @@ class LakeFSReadOnlyStore(ReadOnlyStore):
         )
         if self.debug:
             print(
-                f"LakeFS read-only store received bytes read request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}'"
+                f"LakeFSReadOnlyStore: received bytes read request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}'"
             )
         return self.ref.object(f"{fname}").reader(mode="rb").read()
 
@@ -51,8 +51,11 @@ class LakeFSReadOnlyStore(ReadOnlyStore):
 
     def set_prefix(self, prefix: str):
         if self.debug:
-            print(f"LakeFS read-only store, prefix changed: {self.prefix} => {prefix}")
+            print(f"LakeFSReadOnlyStore: prefix changed {self.prefix} => {prefix}")
         self.prefix = prefix
+
+    def ref(self):
+        return self.ref
 
 
 class LakeFSWriteOnlyStore(WriteOnlyStore):
@@ -76,28 +79,29 @@ class LakeFSWriteOnlyStore(WriteOnlyStore):
             self.prefix = prefix
         if self.debug:
             print(
-                f"Initialized LakeFS write-only store in branch `{self.branch}` (repo `{self.repo}`) with default prefix `{self.prefix}`"
+                f"Initialized LakeFSWriteOnlyStore in branch `{self.branch}` (repo `{self.repo}`) with default prefix `{self.prefix}`"
             )
 
     def write_text(
-        self, path: str, data: str, exists_ok: bool = False, with_prefix: bool = False
+        self, path: str, data: str, exists_ok: bool = False, with_prefix: bool = True
     ) -> None:
         fname = gen_path(
             base=Path("."), suffix=path, prefix=self.prefix if with_prefix else None
         )
         if self.debug:
             print(
-                f"LakeFS write-only store received text write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
+                f"LakeFSWriteOnlyStore: received text write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
             )
         write_mode = "x" if not exists_ok else "w"
         obj = self.branch.object(f"{fname}")
         if obj.exists() and not exists_ok:
             raise FileExistsError(
-                f"Path {fname} already exists in branch {self.branch.id} of repo {self.repo.id}."
+                f"LakeFSWriteOnlyStore: path {fname} already exists in branch {self.branch.id} of repo {self.repo.id}."
             )
-        if fname.exists() and exists_ok:
+        if obj.exists() and exists_ok:
             return
-        obj.writer(mode=write_mode).write(data)
+        with obj.writer(mode=write_mode) as w:
+            w.write(data)
 
     def write_bytes(
         self, path: str, data: bytes, exists_ok: bool = False, with_prefix: bool = True
@@ -107,18 +111,26 @@ class LakeFSWriteOnlyStore(WriteOnlyStore):
         )
         if self.debug:
             print(
-                f"LakeFS write-only store received bytes write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
+                f"LakeFSWriteOnlyStore: received bytes write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
             )
         write_mode = "xb" if not exists_ok else "wb"
         obj = self.branch.object(f"{fname}")
         if obj.exists() and not exists_ok:
             raise FileExistsError(
-                f"Path {fname} already exists in branch {self.branch.id} of repo {self.repo.id}."
+                f"LakeFSWriteOnlyStore: Path {fname} already exists in branch {self.branch.id} of repo {self.repo.id}."
             )
-        if fname.exists() and exists_ok:
+        if obj.exists() and exists_ok:
+            if self.debug:
+                print(
+                    f"LakeFSWriteOnlyStore: {fname} already exists in branch {self.branch.id} of repo {self.repo.id}. Skipping..."
+                )
             return
-
-        obj.writer(mode=write_mode).write(data)
+        if self.debug:
+            print(
+                f"LakeFSWriteOnlyStore: writing {fname} to branch {self.branch.id} of repo {self.repo.id}"
+            )
+        with obj.writer(mode=write_mode) as w:
+            w.write(data)
 
     def exists(self, path, with_prefix: bool = True):
         fname = gen_path(
@@ -131,7 +143,42 @@ class LakeFSWriteOnlyStore(WriteOnlyStore):
 
     def set_prefix(self, prefix: str):
         if self.debug:
-            print(
-                f"Filesystem write-only store, prefix changed: {self.prefix} => {prefix}"
-            )
+            print(f"LakeFSWriteOnlyStore: prefix changed {self.prefix} => {prefix}")
         self.prefix = prefix
+
+    def write_file(
+        self,
+        local_path: str,
+        remote_path: str,
+        exists_ok: bool = False,
+        with_prefix: bool = True,
+    ) -> str:
+        fname = gen_path(
+            base=Path("."),
+            suffix=remote_path,
+            prefix=self.prefix if with_prefix else None,
+        )
+        obj = self.branch.object(f"{fname}")
+        exists = obj.exists()
+        if exists and exists_ok:
+            if self.debug:
+                print(
+                    f"LakeFSWriteOnlyStore: {fname} already exists in branch {self.branch.id} of repo {self.repo.id}. Skipping..."
+                )
+            return "skipped"
+        elif exists and not exists_ok:
+            raise FileExistsError(f"Path {fname} already exists.")
+
+        if self.debug:
+            print(
+                f"LakeFSWriteOnlyStore: writing {fname} to branch {self.branch.id} of repo {self.repo.id}"
+            )
+        with open(local_path, "rb") as local:
+            with (
+                obj.writer(mode="xb") as remote
+            ):  # always xb! If the object exists this function should have already returned at this point
+                remote.write(local.read())
+        return "uploaded"
+
+    def get_branch(self) -> Branch:
+        return self.branch

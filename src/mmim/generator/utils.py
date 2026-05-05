@@ -54,7 +54,7 @@ def df_schema(
     return columns
 
 
-def compute_pos_negs(ds: pd.DataFrame, label_column: str):
+def compute_pos_negs(ds: pd.DataFrame, label_column: str) -> tuple[int, int, int]:
     total = len(ds)
     positives = int(ds[label_column].sum())
     negatives = int(total - positives)
