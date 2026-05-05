@@ -27,13 +27,19 @@ class ReadOnlyStore(ABC):
 class WriteOnlyStore(ABC):
     @abstractmethod
     def write_text(
-        self, path: str, data: str, exists_ok: bool, with_prefix: bool
+        self, path: str, data: str, overwrite: bool, with_prefix: bool
     ) -> None:
         raise NotImplementedError
 
     @abstractmethod
     def write_bytes(
-        self, path: str, data: bytes, exists_ok: bool, with_prefix: bool
+        self, path: str, data: bytes, overwrite: bool, with_prefix: bool
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def write_file(
+        self, local_path: str, remote_path: str, overwrite: bool, with_prefix: bool
     ) -> None:
         raise NotImplementedError
 

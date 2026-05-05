@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 import lakefs
 from lakefs.client import Client
+from lakefs.exceptions import BadRequestException
 import duckdb
 from duckdb import DuckDBPyConnection
 
@@ -80,10 +81,11 @@ default_dataset_version = "v001"
 random_seed = 42
 
 
-def build(args):
+def build(args) -> tuple[str, str | None]:
     duckdb_db = args.database_path
     metadata_file = args.metadata_file
     images_base_dir = args.images_base_dir
+    max_workers = args.max_workers
     debug = args.debug
 
     if images_base_dir is not None:
@@ -108,7 +110,7 @@ def build(args):
     if git_sha is None or git_sha == "":
         git_sha = repo.head.commit.hexsha
 
-    lakefs_host = os.getenv("LAKEFS_HOST")
+    lakefs_host = os.getenv("LAKEFS_URL")
     commit_to_lakefs = lakefs_host is not None and lakefs_host != ""
 
     lakefs_access_key_id = os.getenv("LAKEFS_ACCESS_KEY_ID")
@@ -127,7 +129,9 @@ def build(args):
     if (lakefs_repository is None or lakefs_repository == "") and commit_to_lakefs:
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
-    output_dir = os.getenv("DATASET_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
+    output_dir = (
+        os.getenv("MMIM_GENERATOR_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
+    )
 
     dataset_version = os.getenv(
         "MMIM_GENERATOR_DATASET_VERSION", default_dataset_version
@@ -275,11 +279,11 @@ def build(args):
     json_schema = json.dumps(obj=schema, indent=2, sort_keys=True)
 
     queries = {
-        "images_query_sha": sha256str(images_query),
+        "images_query_sha256": sha256str(images_query),
         "images_query": images_query,
-        "cohort_query_sha": sha256str(cohort_query),
+        "cohort_query_sha256": sha256str(cohort_query),
         "cohort_query": cohort_query,
-        "features_query_sha": sha256str(labs_n_vitals_query),
+        "features_query_sha256": sha256str(labs_n_vitals_query),
         "features_query": labs_n_vitals_query,
     }
 
@@ -353,7 +357,9 @@ def build(args):
                 "path_template": "p{subject_id[:2]}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
             },
         },
-        "defaults": {"loss_pos_weight": float(train_positives / train_negatives)},
+        # negatives = survivors
+        # positives = deaths
+        "defaults": {"loss_pos_weight": float(train_negatives / train_positives)},
     }
 
     json_manifest = json.dumps(manifest, indent=2, sort_keys=True)
@@ -364,13 +370,13 @@ def build(args):
     fs_store = FilesystemWriteOnlyStore(
         output_dir, prefix=tabular_data_prefix, debug=debug
     )
-    fs_store.write_text(path="ds_train.csv", data=train_ds_csv)
-    fs_store.write_text(path="ds_val.csv", data=val_ds_csv)
-    fs_store.write_text(path="ds_test.csv", data=test_ds_csv)
-    fs_store.write_text(path="stats.json", data=json_stats)
-    fs_store.write_text(path="schema.json", data=json_schema)
+    fs_store.write_text(path="ds_train.csv", data=train_ds_csv, overwrite=True)
+    fs_store.write_text(path="ds_val.csv", data=val_ds_csv, overwrite=True)
+    fs_store.write_text(path="ds_test.csv", data=test_ds_csv, overwrite=True)
+    fs_store.write_text(path="stats.json", data=json_stats, overwrite=True)
+    fs_store.write_text(path="schema.json", data=json_schema, overwrite=True)
     fs_store.write_text(
-        path="manifest.json", data=json_manifest, with_prefix=False
+        path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
     )  # puts the manifest at the root!
 
     if images_base_dir:
@@ -380,10 +386,10 @@ def build(args):
         # change prefix to images prefix: data will now be written to a new prefix
         fs_store.set_prefix(prefix=image_data_prefix)
         for local, pure in zip(local_image_paths, pure_paths):
-            with open(local, "rb") as ireader:
-                fs_store.write_bytes(
-                    path=f"{pure}", data=ireader.read(), exists_ok=True
-                )
+            pure_str = f"{pure}"
+            if fs_store.exists(pure_str):
+                continue
+            fs_store.write_file(local_path=local, remote_path=pure_str, overwrite=False)
 
     info = fs_store.commit(message=commit_message, metadata=commit_metadata)
     print(info)
@@ -394,6 +400,7 @@ def build(args):
             username=lakefs_access_key_id,
             password=lakefs_secret_access_key,
         )
+        assert lakefs_repository is not None
         lrepo: lakefs.Repository = lakefs.Repository(lakefs_repository, client=lclient)
         lake_store = LakeFSWriteOnlyStore(
             repository=lrepo,
@@ -402,38 +409,37 @@ def build(args):
             prefix=tabular_data_prefix,
             debug=debug,
         )
-        lake_store.write_text(path="ds_train.csv", data=train_ds_csv)
-        lake_store.write_text(path="ds_val.csv", data=val_ds_csv)
-        lake_store.write_text(path="ds_test.csv", data=test_ds_csv)
-        lake_store.write_text(path="stats.json", data=json_stats)
-        lake_store.write_text(path="schema.json", data=json_schema)
+        lake_store.write_text(path="ds_train.csv", data=train_ds_csv, overwrite=True)
+        lake_store.write_text(path="ds_val.csv", data=val_ds_csv, overwrite=True)
+        lake_store.write_text(path="ds_test.csv", data=test_ds_csv, overwrite=True)
+        lake_store.write_text(path="stats.json", data=json_stats, overwrite=True)
+        lake_store.write_text(path="schema.json", data=json_schema, overwrite=True)
         lake_store.write_text(
-            path="manifest.json", data=json_manifest, with_prefix=False
+            path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
         )
 
         if images_base_dir is not None:
             lake_store.set_prefix(prefix=image_data_prefix)
             pure_paths_str = [f"{pp}" for pp in pure_paths]
 
-            # for local, pure in zip(local_image_paths, pure_paths_str):
-            #     with open(local, "rb") as ireader:
-            #         lake_store.write_bytes(
-            #             path=pure, data=ireader.read(), exists_ok=True
-            #         )
-
-            # multithreaded upload
             uploaded = 0
             skipped = 0
 
-            with ThreadPoolExecutor() as pool:
+            def upload_image(local: str, pure: str) -> str:
+                if lake_store.exists(pure):
+                    if debug:
+                        print(
+                            f"LakeFSWriteOnlyStore: {pure} already exists. Skipping..."
+                        )
+                    return "skipped"
+                lake_store.write_file(
+                    local_path=local, remote_path=pure, overwrite=False
+                )
+                return "uploaded"
+
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = [
-                    pool.submit(
-                        lambda local, pure: lake_store.write_file(
-                            local, pure, exists_ok=True
-                        ),
-                        local,
-                        pure,
-                    )
+                    pool.submit(upload_image, local, pure)
                     for local, pure in zip(local_image_paths, pure_paths_str)
                 ]
 
@@ -448,22 +454,22 @@ def build(args):
                 print(f"Uploaded {uploaded} images.")
                 print(f"Skipped {skipped} images.")
 
-            if uploaded == 0 and skipped == len(local_image_paths):
-                print("Nothing to commit.")
-                return lake_store.get_branch().head.get_commit()
-            elif uploaded > 0 and skipped < len(local_image_paths):
-                commit_id = lake_store.commit(
-                    message=commit_message,
-                    metadata=commit_metadata,
-                )
-                print(
-                    f"Successfully committed on {lakefs_branch} with commit id {commit_id}"
-                )
-                return commit_id
-            else:
-                raise RuntimeError(
-                    f"Weird number of total elements: uploaded={0}, skipped={skipped}, total={uploaded + skipped} | Verify success criteria!"
-                )
+        try:
+            commit_id = lake_store.commit(
+                message=commit_message,
+                metadata=commit_metadata,
+            )
+            print(
+                f"Successfully committed on {lakefs_branch} with commit id {commit_id}"
+            )
+        except BadRequestException as e:
+            if e.body.get("message") != "commit: no changes":
+                raise
+            print("Nothing to commit.")
+            commit_id = lake_store.get_branch().head.get_commit().id
+        return output_dir, commit_id
+    else:
+        return output_dir, None
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:

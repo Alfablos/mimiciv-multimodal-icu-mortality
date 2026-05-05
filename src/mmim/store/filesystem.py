@@ -80,46 +80,69 @@ class FilesystemWriteOnlyStore(WriteOnlyStore):
             )
 
     def write_text(
-        self, path: str, data: str, exists_ok: bool = False, with_prefix: bool = True
+        self, path: str, data: str, overwrite: bool = False, with_prefix: bool = True
     ) -> None:
         fname = gen_path(
             base=self.dir, suffix=path, prefix=self.prefix if with_prefix else None
         )
         if self.debug:
             print(
-                f"Filesystem write-only store received text write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
+                f"Filesystem write-only store received text write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', overwrite='{overwrite}'"
             )
-        if fname.exists() and not exists_ok:
+        if fname.exists() and not overwrite:
             raise FileExistsError(
                 f"Path {fname} already exists in directory {self.dir}"
             )
-        if fname.exists() and exists_ok:
-            return
         parent = fname.parent
         if not parent.exists():
             parent.mkdir(parents=True)
         fname.write_text(data)
 
     def write_bytes(
-        self, path: str, data: bytes, exists_ok: bool = False, with_prefix: bool = True
+        self, path: str, data: bytes, overwrite: bool = False, with_prefix: bool = True
     ) -> None:
         fname = gen_path(
             base=self.dir, suffix=path, prefix=self.prefix if with_prefix else None
         )
         if self.debug:
             print(
-                f"Filesystem write-only store received bytes write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', exists_ok='{exists_ok}'"
+                f"Filesystem write-only store received bytes write request: path='{path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', overwrite='{overwrite}'"
             )
-        if fname.exists() and not exists_ok:
+        if fname.exists() and not overwrite:
             raise FileExistsError(
                 f"Path {fname} already exists in directory {self.dir}"
             )
-        if fname.exists() and exists_ok:
-            return
         parent = fname.parent
         if not parent.exists():
             parent.mkdir(parents=True)
         fname.write_bytes(data)
+
+    def write_file(
+        self,
+        local_path: str,
+        remote_path: str,
+        overwrite: bool = False,
+        with_prefix: bool = True,
+    ) -> None:
+        fname = gen_path(
+            base=self.dir,
+            suffix=remote_path,
+            prefix=self.prefix if with_prefix else None,
+        )
+        if self.debug:
+            print(
+                f"Filesystem write-only store received file write request: local_path='{local_path}' remote_path='{remote_path}' prefix='{self.prefix if with_prefix else 'None'}'\nresulting_filename='{fname}', overwrite='{overwrite}'"
+            )
+        if fname.exists() and not overwrite:
+            raise FileExistsError(
+                f"Path {fname} already exists in directory {self.dir}"
+            )
+        parent = fname.parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        with open(local_path, "rb") as source:
+            with fname.open("wb") as target:
+                target.write(source.read())
 
     def exists(self, path: str, with_prefix: bool = True) -> bool:
         fname = gen_path(
@@ -139,7 +162,5 @@ class FilesystemWriteOnlyStore(WriteOnlyStore):
         {message}
         {json.dumps(metadata, indent=2)}
         """
-        self.write_text(
-            path="./info.txt", data=info, exists_ok=False, with_prefix=False
-        )
+        self.write_text(path="./info.txt", data=info, overwrite=True, with_prefix=False)
         return info
