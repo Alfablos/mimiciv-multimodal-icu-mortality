@@ -291,8 +291,8 @@ def build(args) -> tuple[str, str | None]:
         ds=train_ds, label_column=label
     )
 
-    tabular_data_prefix = DATASET_NAME + "/" + dataset_version
-    image_data_prefix = tabular_data_prefix + "/" + images_base_dir_alias
+    common_data_prefix = DATASET_NAME + "/" + dataset_version
+    image_data_prefix = images_base_dir_alias
 
     manifest = {
         "dataset": DATASET_NAME,
@@ -314,12 +314,12 @@ def build(args) -> tuple[str, str | None]:
             "test": dataset_summary(test_ds, label),
             "leakage_checks": leakage_check(train_ds, val_ds, test_ds),
         },
+        "data_prefix": common_data_prefix,
         "data": {
             "tabular": {
                 "extension": "csv",
                 "storage": "lakefs" if commit_to_lakefs else "local",
                 "branch": lakefs_branch if commit_to_lakefs else None,
-                "prefix": tabular_data_prefix,
                 "files": {
                     "training": {
                         "path": "ds_train.csv",
@@ -368,7 +368,7 @@ def build(args) -> tuple[str, str | None]:
     commit_metadata: dict[str, str] = {"builder_ref": git_ref, "builder_sha": git_sha}
 
     fs_store = FilesystemWriteOnlyStore(
-        output_dir, prefix=tabular_data_prefix, debug=debug
+        output_dir, prefix=common_data_prefix, debug=debug
     )
     fs_store.write_text(path="ds_train.csv", data=train_ds_csv, overwrite=True)
     fs_store.write_text(path="ds_val.csv", data=val_ds_csv, overwrite=True)
@@ -384,7 +384,7 @@ def build(args) -> tuple[str, str | None]:
         # these paths will be mounted on the local/remote prefix
         pure_paths = [Path(p).relative_to(images_base_dir) for p in local_image_paths]
         # change prefix to images prefix: data will now be written to a new prefix
-        fs_store.set_prefix(prefix=image_data_prefix)
+        fs_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
         for local, pure in zip(local_image_paths, pure_paths):
             pure_str = f"{pure}"
             if fs_store.exists(pure_str):
@@ -406,7 +406,7 @@ def build(args) -> tuple[str, str | None]:
             repository=lrepo,
             branch=lakefs_branch,
             base_branch="master",
-            prefix=tabular_data_prefix,
+            prefix=common_data_prefix,
             debug=debug,
         )
         lake_store.write_text(path="ds_train.csv", data=train_ds_csv, overwrite=True)
@@ -414,12 +414,16 @@ def build(args) -> tuple[str, str | None]:
         lake_store.write_text(path="ds_test.csv", data=test_ds_csv, overwrite=True)
         lake_store.write_text(path="stats.json", data=json_stats, overwrite=True)
         lake_store.write_text(path="schema.json", data=json_schema, overwrite=True)
+        # preserves manifests for older datasets
+        lake_store.write_text(
+            path="manifest.json", data=json_manifest, overwrite=True, with_prefix=True
+        )
         lake_store.write_text(
             path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
         )
 
         if images_base_dir is not None:
-            lake_store.set_prefix(prefix=image_data_prefix)
+            lake_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
             pure_paths_str = [f"{pp}" for pp in pure_paths]
 
             uploaded = 0

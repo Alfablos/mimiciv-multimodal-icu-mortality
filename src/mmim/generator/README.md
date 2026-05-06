@@ -86,12 +86,13 @@ out/
         ├── ds_test.csv
         ├── stats.json
         ├── schema.json
+        ├── manifest.json
         └── <image_alias>/
             └── pXX/pXXXX/sXXXX/<dicom_id>.<ext>
 ```
 
 
-`manifest.json` is placed at the output root. Tabular files and images are placed under the dataset prefix.
+`manifest.json` is placed at both the output root and under the dataset prefix, this allows to **have a pointer to the latest dataset version in the root and the possibility to inspect previous ones**. Tabular files and images are placed under the dataset prefix.
 
 | File | Description |
 |---|---|
