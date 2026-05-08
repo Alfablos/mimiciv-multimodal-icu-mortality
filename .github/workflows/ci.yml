@@ -29,7 +29,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked --all-extras
 
       - name: Run tests
         run: uv run pytest
@@ -60,26 +60,26 @@ jobs:
       - name: Docker buildx setup
         uses: docker/setup-buildx-action@v4
 
-      - name: Validate image provenance inputs
+      - name: Validate image build inputs
         shell: bash
         run: |
           set -euo pipefail
           test -n "${GIT_SHA}"
           test -n "${GIT_REF}"
 
-      - name: Docker build & push ${{ matrix.image }}
-        uses: docker/build-push-action@v7
-        env:
-          BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ secrets.CONTAINER_REGISTRY_HOST }}/mmim/${{ matrix.image }}:${{ env.GIT_REF }}-${{ env.GIT_SHA }}
-          build-args: |
-            GIT_SHA=${{ env.GIT_SHA }}
-            GIT_REF=${{ env.GIT_REF }}
-          labels: |
-            org.opencontainers.image.revision=${{ env.GIT_SHA }}
-            org.opencontainers.image.ref.name=${{ env.GIT_REF }}
-            org.opencontainers.image.title=${{ matrix.image }}
+      # - name: Docker build & push ${{ matrix.image }}
+      #   uses: docker/build-push-action@v7
+      #   env:
+      #     BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+      #   with:
+      #     context: .
+      #     file: ${{ matrix.dockerfile }}
+      #     push: ${{ github.event_name != 'pull_request' }}
+      #     tags: ${{ secrets.CONTAINER_REGISTRY_HOST }}/mmim/${{ matrix.image }}:${{ env.GIT_REF }}-${{ env.GIT_SHA }}
+      #     build-args: |
+      #       GIT_SHA=${{ env.GIT_SHA }}
+      #       GIT_REF=${{ env.GIT_REF }}
+      #     labels: |
+      #       org.opencontainers.image.revision=${{ env.GIT_SHA }}
+      #       org.opencontainers.image.ref.name=${{ env.GIT_REF }}
+      #       org.opencontainers.image.title=${{ matrix.image }}
