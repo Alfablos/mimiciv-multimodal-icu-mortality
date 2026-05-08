@@ -1,6 +1,4 @@
-import numpy as np
-
-from trainer.train import get_metrics
+from mmim.trainer.train import get_metrics
 
 
 def test_metrics_computed_correctly():
@@ -14,6 +12,6 @@ def test_metrics_computed_correctly():
     assert m["AUPRC"] == 1.0, (
         "Failure in computing correct AUPRC from preds and labels."
     )
-    assert m["sens_at_95_spec"] == np.float64(1.0), (
+    assert m["sens_at_95_spec"] == 1.0, (
         "Failure in computing correct sensibility at specificity 95% from preds and labels."
     )

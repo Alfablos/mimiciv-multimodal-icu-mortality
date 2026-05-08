@@ -1,38 +1,36 @@
-from pathlib import Path
-
 from pytest import raises
 import torch
+import pandas as pd
 
 
-from data import init_test_ds, current_features, IMAGES_DIR
+from tests.unit.data import current_features, data, expected_image_paths, init_test_ds
 
 
-def test_ds_has_right_features():
-    test_ds = init_test_ds()
+def test_ds_has_right_features(tmp_path):
+    test_ds = init_test_ds(tmp_path)
     assert test_ds.features == current_features
     for i in range(len(current_features)):
         assert test_ds.features[i] == current_features[i]
 
 
-def test_ds_allowed_image_extensions_are_ok():
+def test_ds_allowed_image_extensions_are_ok(tmp_path):
+    empty_df = pd.DataFrame(data).iloc[0:0]
     for allowed_ext in ["jpg", ".jpg", "dcm", ".dcm", "dicom", ".dicom"]:
-        _ = init_test_ds(images_extension=allowed_ext)
+        _ = init_test_ds(tmp_path, images_extension=allowed_ext, df=empty_df)
 
 
-def test_ds_wrong_image_extensions_are_rejected():
+def test_ds_wrong_image_extensions_are_rejected(tmp_path):
     with raises(ValueError, match="Extension .+ is not supported."):
-        init_test_ds(images_extension="unallowed")
-        init_test_ds(images_extension=".unallowed")
-        init_test_ds(images_extension="#? unallowed")
+        init_test_ds(tmp_path, images_extension="unallowed")
+    with raises(ValueError, match="Extension .+ is not supported."):
+        init_test_ds(tmp_path, images_extension=".unallowed")
+    with raises(ValueError, match="Extension .+ is not supported."):
+        init_test_ds(tmp_path, images_extension="#? unallowed")
 
 
-def test_ds_returns_images_correctly():
-    ds = init_test_ds()
-    images_dir = Path(IMAGES_DIR)
-    paths = [
-        str(images_dir / "p11" / "p11111111" / "s3030303" / "0.jpg"),
-        str(images_dir / "p22" / "p22222222" / "s8080808" / "1.jpg"),
-    ]
+def test_ds_returns_images_correctly(tmp_path):
+    ds = init_test_ds(tmp_path)
+    paths = expected_image_paths(tmp_path / "workdir")
 
     for i, path in enumerate(paths):
         img, example, label = ds[i]

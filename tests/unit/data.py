@@ -1,10 +1,19 @@
+from pathlib import Path
+from shutil import copy2
 from typing import Any
 
 import pandas as pd
 
-from trainer.data import MIMICReduced
+from mmim.trainer.data import MIMICReduced
+from mmim.trainer.dataset_utils import ParsedDataset
+from mmim.store.filesystem import FilesystemReadOnlyStore
 
-IMAGES_DIR = "tests/unit/images"
+FIXTURE_IMAGES_DIR = Path("tests/unit/images")
+DATA_PREFIX = "multimodal-icu-mortality-24h/v001"
+IMAGES_PREFIX = "mimic-cxr-jpg"
+IMAGE_PATH_TEMPLATE = (
+    "p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}"
+)
 
 batch_size = 2
 images_shape = (512, 512, 3)
@@ -188,14 +197,88 @@ data = [
 ]
 
 
-def init_test_ds(**kwargs) -> MIMICReduced:
+def _copy_fixture_images(store_root: Path, images_extension: str) -> None:
+    extension = images_extension.lstrip(".")
+    for row in data:
+        subject_id = str(row["subject_id"])
+        study_id = str(row["study_id"])
+        dicom_id = str(row["dicom_id"])
+        rel_path = (
+            Path(f"p{subject_id[:2]}")
+            / f"p{subject_id}"
+            / f"s{study_id}"
+            / f"{dicom_id}.{extension}"
+        )
+        source = FIXTURE_IMAGES_DIR / rel_path.with_suffix(".jpg")
+        target = store_root / DATA_PREFIX / IMAGES_PREFIX / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        copy2(source, target)
+
+
+def build_test_config(store_root: Path, images_extension: str = "jpg") -> ParsedDataset:
+    manifest: dict[str, Any] = {
+        "data_prefix": DATA_PREFIX,
+        "defaults": {"loss_pos_weight": 1.0},
+        "data": {
+            "tabular": {"label_column": "hospital_expire_flag"},
+            "images": {
+                "prefix": IMAGES_PREFIX,
+                "extension": images_extension,
+                "path_template": IMAGE_PATH_TEMPLATE,
+            },
+        },
+    }
+    return ParsedDataset(
+        train_ds=pd.DataFrame(data),
+        val_ds=pd.DataFrame(data),
+        stats=stats,
+        defaults=manifest["defaults"],
+        data_prefix=DATA_PREFIX,
+        images_prefix=IMAGES_PREFIX,
+        images_extension=images_extension,
+        images_path_template=IMAGE_PATH_TEMPLATE,
+        store=FilesystemReadOnlyStore(str(store_root), prefix=DATA_PREFIX),
+        manifest=manifest,
+    )
+
+
+def init_test_ds(tmp_path: Path, **kwargs) -> MIMICReduced:
+    images_extension = kwargs.pop("images_extension", "jpg")
+    df = kwargs.pop("df", pd.DataFrame(data))
+    store_root = tmp_path / "store"
+    data_dir = tmp_path / "workdir"
+    _copy_fixture_images(store_root, images_extension)
     args: dict[str, Any] = {
-        "df": pd.DataFrame(data),
-        "dataset_stats": stats,
-        "label_column": "hospital_expire_flag",
-        "images_extension": "jpg",
-        "images_base_dir": str(IMAGES_DIR),
+        "df": df,
+        "dataset_config": build_test_config(
+            store_root=store_root, images_extension=images_extension
+        ),
+        "data_dir": str(data_dir),
         "limit": None,
     }
     final_args = {**args, **kwargs}
     return MIMICReduced(**final_args)
+
+
+def expected_image_paths(data_dir: Path, images_extension: str = "jpg") -> list[str]:
+    extension = images_extension.lstrip(".")
+    return [
+        str(
+            data_dir
+            / DATA_PREFIX
+            / IMAGES_PREFIX
+            / "p11"
+            / "p11111111"
+            / "s3030303"
+            / f"0.{extension}"
+        ),
+        str(
+            data_dir
+            / DATA_PREFIX
+            / IMAGES_PREFIX
+            / "p22"
+            / "p22222222"
+            / "s8080808"
+            / f"1.{extension}"
+        ),
+    ]

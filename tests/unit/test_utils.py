@@ -1,4 +1,4 @@
-from trainer.utils import find_paths
+from mmim.trainer.utils import find_paths
 
 
 def test_find_nonexistent_paths():
