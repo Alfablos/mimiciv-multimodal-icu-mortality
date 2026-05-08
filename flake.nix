@@ -56,6 +56,7 @@
               just
               trivy
               grype
+              lakectl
             ];
 
             shellHook = ''

@@ -24,7 +24,7 @@ wheels/
 *.dcm
 *.parquet
 *.jpg
-!tests/trainer/unit/images/**/*.jpg
+!tests/unit/images/**/*.jpg
 *.sqlite
 
 # mlflow
@@ -40,3 +40,7 @@ Caddyfile
 markdown.html
 fixes.md
 .env
+stats.json
+manifest.json
+schema.json
+out/

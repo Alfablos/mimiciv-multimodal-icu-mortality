@@ -26,172 +26,186 @@ The model is a composite neural network with:
 - A *tabular encoder* for vitals, labs, demographics, and missingness indicators.
 - A *fusion* model that combines both representations to predict in-hospital mortality.
 
-## Configuration
+## Project Structure
 
-The project is configured through environment variables. They are used in three different phases:
+This repository contains two independent Python projects inside a single repo:
 
-- Docker image build time: `Dockerfile` accepts source metadata as build args and stores it in image labels and environment variables.
-- Container startup time: `entrypoint.sh` resolves dataset paths, downloads missing files from S3-compatible storage, then launches the Python CLI entrypoint.
-- Python runtime: `trainer/config.py`, `trainer/train.py`, `trainer/meta.py`, and `trainer/builder.py` read variables for training, metadata logging, and dataset generation.
+- `generator/` — Dataset generation pipeline (reads MIMIC databases, produces the artifact bundle)
+- `trainer/` — Model training pipeline (consumes artifact bundle, trains the multimodal model)
 
-### Build Metadata
+Each project has its own `pyproject.toml`, dependencies, Dockerfile, Compose file, and test suite. The only runtime contract between them is the dataset artifact bundle described below.
 
-These variables identify the source revision used for a training run.
+A shared root `justfile` delegates commands to each project. Run `just --list` to see all available recipes.
 
-| Variable | Default | Used by | Description |
-| --- | --- | --- | --- |
-| `IMAGE_NAME` | None | `justfile` | Docker image name used by `just image`. Required for that command. |
-| `GIT_SHA` | Set by `just image` from `git rev-parse HEAD` | `Dockerfile`, `trainer/meta.py` | Source commit recorded in image labels and MLflow metadata. |
-| `GIT_REF` | Set by `just image` from the current branch | `Dockerfile`, `trainer/meta.py` | Source branch or ref recorded in image labels and MLflow metadata. |
+## Quick Start
 
-Build an image locally:
+### Generator — Build a Dataset
 
 ```bash
-IMAGE_NAME=registry.example.com/mmim/mmim-trainer just image
+# Run locally (requires DuckDB with MIMIC-IV + MIMIC-ED tables)
+just generator build-dataset
+
+# Or pass custom args
+just generator -- --help
+
+# Build and run via Docker Compose
+just generator-compose-up
 ```
 
-Equivalent manual metadata commands:
+### Trainer — Train the Model
 
 ```bash
-export GIT_SHA="$(git rev-parse HEAD)"
-export GIT_REF="$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)"
+# Run locally (requires dataset/ directory with artifacts)
+just trainer train
+
+# Or via Docker Compose (mounts dataset/ into /app/dataset)
+just trainer-compose-up
 ```
 
-The `Dockerfile` consumes these as build args:
+### Run All Tests
 
 ```bash
-docker build \
-  --build-arg GIT_SHA="$GIT_SHA" \
-  --build-arg GIT_REF="$GIT_REF" \
-  -t "$IMAGE_NAME:$GIT_REF-$GIT_SHA" .
+just test                  # All tests (root aggregate)
+just generator-test        # Generator-only tests
+just trainer-test          # Trainer-only tests
+just check-boundaries      # Prove generator/trainer split is intact
 ```
 
-Note: `docker compose up --build` does not currently pass `GIT_SHA` or `GIT_REF` as build args unless `build.args` is added to `docker-compose.yml`.
+## Generator
+
+The generator reads MIMIC-IV and MIMIC-ED clinical data through a DuckDB database, links it with MIMIC-CXR metadata, and produces a dataset artifact bundle consumed by the trainer.
+
+### Local Workflow
+
+```bash
+# Install generator dependencies
+uv sync --project generator
+
+# Show available commands
+uv --project generator run python -m generator.main --help
+
+# Build a complete dataset
+uv --project generator run python -m generator.main build-dataset
+```
+
+### Container Workflow
+
+The generator Compose file defines a `generator` service with safe defaults. It does not automatically generate data — operators add volume mounts and override the command intentionally.
+
+```bash
+just generator-compose-up
+```
+
+Generator-specific environment variables for optional LakeFS integration are available in `generator/compose.yml`.
+
+## Trainer
+
+The trainer consumes the dataset artifact bundle and trains a multimodal model combining chest X-ray image features with tabular clinical features.
+
+### Local Workflow
+
+```bash
+# Install trainer dependencies
+uv sync --project trainer
+
+# Show available commands
+uv --project trainer run python -m trainer.main --help
+
+# Train with default config
+uv --project trainer run python -m trainer.main train
+```
+
+### Container Workflow
+
+The trainer Compose file mounts a local `dataset/` directory into `/app/dataset` and starts training via `trainer/entrypoint.sh` which validates the full dataset bundle before launching.
+
+```bash
+just trainer-compose-up
+```
+
+The trainer entrypoint (`trainer/entrypoint.sh`) checks for all 6 expected files + the image tree directory before starting. If any are missing, it prints the full list and exits with code 1.
+
+## Dataset Artifact Contract
+
+The generator produces a complete artifact bundle. The trainer consumes it. This is their only runtime contract.
+
+### Full Generator Output Bundle
+
+| Artifact | Produced by | Role |
+|----------|-------------|------|
+| `ds_train.csv` | `generator/builder.py` | Training rows consumed through `TRAINING_DATASET_FILE` |
+| `ds_val.csv` | `generator/builder.py` | Validation rows consumed through `VALIDATION_DATASET_FILE` |
+| `ds_test.csv` | `generator/builder.py` | Held-out test split (part of the complete bundle) |
+| `stats.json` | `generator/builder.py` | Training-set means and standard deviations |
+| `manifest.json` | `generator/builder.py` | Provenance and bundle integrity |
+| `schema.json` | `generator/builder.py` | Column and role metadata |
+| Image tree | Operator populates from MIMIC-CXR-JPG | Files resolved under `DATASET_IMAGES_BASEDIR` |
+
+`generator/builder.py` is the canonical producer. The trainer consumes artifacts — it must not define an alternate contract, invoke builder logic, or select storage keys.
+
+### Runtime Path Conventions
+
+**Container:** The trainer working directory is `/app`. The dataset directory is `/app/dataset`.
+
+**Local:** The equivalent local convention is `./dataset/`.
+
+```
+/app/dataset/
+├── ds_train.csv          # Training split
+├── ds_val.csv            # Validation split
+├── ds_test.csv           # Test split
+├── stats.json            # Dataset statistics
+├── manifest.json         # Provenance metadata
+├── schema.json           # Column metadata
+└── images/               # Image tree (mounted or populated by operator)
+    └── mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files/
+        └── pXX/pXXXXXXXX/sXXXXXXXX/<dicom_id>.jpg
+```
+
+The operator decides how to populate or mount the dataset directory. The trainer's runtime contract is the filesystem shape at startup, not the storage mechanism.
+
+### Fail-fast and scope boundaries
+
+Missing required artifacts are configuration or data errors. They fail fast with clear messages and must not trigger `trainer/builder.py` fallback behavior, S3 key selection, or per-file download choices. `trainer/builder.py` must not be treated as a second contract source.
+
+This contract keeps `generator/` and `trainer/` coupled by files only, not by runtime Python imports.
+
+## Trainer Configuration
+
+The trainer reads configuration from environment variables.
 
 ### Dataset Paths
 
-These variables point the trainer and dataset builder to local files. In Docker, `entrypoint.sh` derives defaults from `BASE_DIR` and `DATASET_LOCAL_DIR`.
-
-| Variable | Default | Used by | Description |
-| --- | --- | --- | --- |
-| `BASE_DIR` | `/app` in Docker | `entrypoint.sh` | Directory the entrypoint enters before launching Python. |
-| `DATASET_LOCAL_DIR` | `$BASE_DIR/dataset` in Docker | `entrypoint.sh` | Base local directory for dataset files and images. |
-| `TRAINING_DATASET_FILE` | `$DATASET_LOCAL_DIR/ds_train.csv` in Docker, `./dataset/ds_train.csv` locally | `entrypoint.sh`, `trainer/config.py`, `trainer/builder.py`, `trainer/meta.py` | Training CSV path. |
-| `VALIDATION_DATASET_FILE` | `$DATASET_LOCAL_DIR/ds_val.csv` in Docker, `./dataset/ds_val.csv` locally | `entrypoint.sh`, `trainer/config.py`, `trainer/builder.py`, `trainer/meta.py` | Validation CSV path. |
-| `TEST_DATASET_FILE` | `./ds_test.csv` in dataset builder | `trainer/builder.py` | Test CSV output path when building datasets. |
-| `DATASET_STATS_FILE` | `$DATASET_LOCAL_DIR/stats.json` in Docker, `./dataset/stats.json` locally | `entrypoint.sh`, `trainer/config.py`, `trainer/builder.py`, `trainer/meta.py` | JSON file containing training-set means and standard deviations. |
-| `DATASET_IMAGES_BASEDIR` | `$DATASET_LOCAL_DIR/$DATASET_IMAGES_DIR` in Docker, `./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files` locally | `entrypoint.sh`, `trainer/config.py`, `trainer/meta.py` | Local base directory containing MIMIC-style image paths. |
-| `DATASET_IMAGES_EXTENSION` | `dcm` in `entrypoint.sh` and `trainer/config.py`, `jpg` in `docker-compose.yml` | `entrypoint.sh`, `trainer/config.py`, `trainer/meta.py` | Image extension passed to the dataset loader. Use `jpg`, `.jpg`, `dcm`, `.dcm`, `dicom`, or `.dicom`. |
-
-`docker-compose.yml` mounts the local dataset into the container:
-
-```yaml
-volumes:
-  - ./dataset/ds_train.csv:/app/dataset/ds_train.csv
-  - ./dataset/ds_val.csv:/app/dataset/ds_val.csv
-  - ./dataset/stats.json:/app/dataset/stats.json
-  - ./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files:/app/dataset/mimic-cxr-jpg
-```
-
-If these files and directories exist, the entrypoint skips downloading them.
-
-### S3-Compatible Dataset Download
-
-The Docker entrypoint can download missing dataset files and images with the AWS CLI. It uses `aws s3 --endpoint-url`, so it can target S3-compatible storage, not only AWS S3.
-
-| Variable | Default | Used by | Description |
-| --- | --- | --- | --- |
-| `AWS_ACCESS_KEY_ID` | Empty in Compose | `awscli` | Access key for the S3-compatible endpoint. |
-| `AWS_SECRET_ACCESS_KEY` | Empty in Compose | `awscli` | Secret key for the S3-compatible endpoint. |
-| `DATASET_ENDPOINT_URL` | Empty | `entrypoint.sh` | S3-compatible endpoint URL. Required when files are not already mounted locally. |
-| `DATASET_BUCKET` | `mmim` | `entrypoint.sh` | Bucket containing CSVs, stats, and images. |
-| `DATASET_TRAINING_KEY` | `ds_train.csv` | `entrypoint.sh` | Object key for the training CSV. |
-| `DATASET_VALIDATION_KEY` | `ds_val.csv` | `entrypoint.sh` | Object key for the validation CSV. |
-| `DATASET_STATS_KEY` | `stats.json` | `entrypoint.sh` | Object key for dataset statistics. |
-| `DATASET_IMAGES_DIR` | `mimic-cxr-jpg` | `entrypoint.sh`, `docker-compose.yml` | Object prefix for image files. |
-| `DATASET_TRAINING_FILENAME` | Basename of `DATASET_TRAINING_KEY` | `entrypoint.sh` | Local filename used under `DATASET_LOCAL_DIR`. |
-| `DATASET_VALIDATION_FILENAME` | Basename of `DATASET_VALIDATION_KEY` | `entrypoint.sh` | Local filename used under `DATASET_LOCAL_DIR`. |
-| `DATASET_STATS_FILENAME` | Basename of `DATASET_STATS_KEY` | `entrypoint.sh` | Local filename used under `DATASET_LOCAL_DIR`. |
-
-Example:
-
-```bash
-DATASET_ENDPOINT_URL=https://s3.example.com \
-DATASET_BUCKET=mmim \
-AWS_ACCESS_KEY_ID=... \
-AWS_SECRET_ACCESS_KEY=... \
-docker compose up --build trainer
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRAINING_DATASET_FILE` | `./dataset/ds_train.csv` | Training CSV path |
+| `VALIDATION_DATASET_FILE` | `./dataset/ds_val.csv` | Validation CSV path |
+| `DATASET_STATS_FILE` | `./dataset/stats.json` | Dataset statistics JSON |
+| `DATASET_IMAGES_BASEDIR` | `./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files` | Image tree base directory |
+| `DATASET_IMAGES_EXTENSION` | `jpg` | Image file extension (jpg or jpeg) |
 
 ### MLflow
 
-MLflow settings are passed through Docker Compose and read by MLflow itself or by training code.
-
-| Variable | Default | Used by | Description |
-| --- | --- | --- | --- |
-| `MLFLOW_TRACKING_URI` | `http://host.docker.internal:5000` in Compose | MLflow | Tracking server URI. |
-| `MLFLOW_TRACKING_USERNAME` | `admin` in Compose | MLflow | Tracking server username, if authentication is enabled. |
-| `MLFLOW_TRACKING_PASSWORD` | `password1234` in Compose | MLflow | Tracking server password, if authentication is enabled. |
-| `MLFLOW_EXPERIMENT_NAME` | `Multimodal ICU mortality` | `trainer/train.py` | Experiment name used for training runs. |
-
-Training metadata logged to MLflow includes source revision, dataset hashes, dataset paths, selected hyperparameters, platform, Python, PyTorch, TorchVision, CUDA version, and GPU name.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MLFLOW_TRACKING_URI` | Set via Compose | MLflow tracking server URI |
+| `MLFLOW_TRACKING_USERNAME` | Set via Compose | MLflow auth username |
+| `MLFLOW_TRACKING_PASSWORD` | Set via Compose | MLflow auth password |
+| `MLFLOW_EXPERIMENT_NAME` | `Multimodal ICU mortality` | Experiment name |
 
 ### Training Hyperparameters
 
-These are read by `trainer/config.py` at Python runtime.
-
-| Variable | Default | Type | Description |
-| --- | --- | --- | --- |
-| `MMIM_BATCH_SIZE` | `32` | int | Batch size. |
-| `MMIM_EPOCHS` | `10` | int | Number of training epochs. |
-| `MMIM_DROPOUT` | `0.3` | float | Dropout used by the fusion model. |
-| `MMIM_LEARNING_RATE` | `0.001` | float | AdamW learning rate. Compose currently defaults to `0.0001`. |
-| `MMIM_TRAIN_LIMIT` | `1.0` | float | Fraction of train and validation datasets to sample for faster iteration. |
-| `MMIM_NUM_WORKERS` | Derived from CPU count | int | DataLoader worker count. |
-| `MMIM_DEBUG` | `false` | bool | Enables dataset debug output. |
-| `MMIM_DATASET_SHUFFLE` | `true` | bool | Enables DataLoader shuffling. |
-| `MMIM_LOSS_POS_WEIGHT` | `5160 / 936` | float | Positive class weight for imbalanced mortality labels. Update if the training distribution changes. |
-
-Boolean variables accept `1`, `true`, `yes`, and `on` as true values where parsed through `bool_from_env`.
-
-## Running Training
-
-Run training locally from the repository root:
-
-```bash
-uv run python -m trainer.main train
-```
-
-Run the container with Docker Compose:
-
-```bash
-docker compose up --build trainer
-```
-
-The container entrypoint resolves dataset paths, downloads missing inputs if configured, changes to `BASE_DIR`, and currently runs:
-
-```bash
-uv run python -m trainer.main
-```
-
-If `trainer.main` requires an explicit command, update `entrypoint.sh` to pass it, for example `uv run python -m trainer.main train`.
-
-## Building Datasets
-
-Dataset generation is implemented in `generator/builder.py` and writes output paths based on:
-
-- `TRAINING_DATASET_FILE`
-- `VALIDATION_DATASET_FILE`
-- `TEST_DATASET_FILE`
-- `DATASET_STATS_FILE`
-
-When these variables are not set, builder defaults write into the current directory.
-
-The builder expects:
-
-- A DuckDB database containing MIMIC-IV and MIMIC-ED tables.
-- A MIMIC-style image base directory.
-- The MIMIC-CXR metadata CSV shipped with MIMIC-CXR-JPG.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MMIM_BATCH_SIZE` | `32` | Batch size |
+| `MMIM_EPOCHS` | `10` | Number of training epochs |
+| `MMIM_DROPOUT` | `0.3` | Dropout rate for fusion model |
+| `MMIM_LEARNING_RATE` | `0.001` | AdamW learning rate |
+| `MMIM_TRAIN_LIMIT` | `1.0` | Fraction of data to use (for faster iteration) |
+| `MMIM_NUM_WORKERS` | Auto (CPU-based) | DataLoader workers |
+| `MMIM_DEBUG` | `false` | Enable dataset debug output |
+| `MMIM_DATASET_SHUFFLE` | `true` | Enable DataLoader shuffle |
+| `MMIM_LOSS_POS_WEIGHT` | `5160 / 936` | Pos class weight for imbalanced labels |
 
 ## Limitations
 
