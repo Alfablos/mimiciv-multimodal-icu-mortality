@@ -5,20 +5,13 @@ import mlflow
 import mlflow.pytorch
 import git
 from git import Repo
-from hashlib import sha256
 import platform
 
 
 from .config import (
-    train_csv,
-    val_csv,
-    image_extension,
-    loss_pos_weight,
-    dataset_stats_file,
     dataset_shuffle,
     default_num_workers,
     num_workers,
-    image_base_dir,
 )
 
 
@@ -44,24 +37,24 @@ def log_metadata(no_send=False):
             repo = get_git_repo()
         git_ref = repo.head.ref.name
 
-    with open(train_csv, "rb") as f:
-        dataset_train_hash = sha256(f.read()).hexdigest()
-    with open(val_csv, "rb") as f:
-        dataset_validation_hash = sha256(f.read()).hexdigest()
-    with open(dataset_stats_file, "rb") as f:
-        dataset_stats_hash = sha256(f.read()).hexdigest()
+    # with open(train_csv, "rb") as f:
+    #     dataset_train_hash = sha256(f.read()).hexdigest()
+    # with open(val_csv, "rb") as f:
+    #     dataset_validation_hash = sha256(f.read()).hexdigest()
+    # with open(dataset_stats_file, "rb") as f:
+    #     dataset_stats_hash = sha256(f.read()).hexdigest()
 
     metadata = {
         "source.git_sha": git_sha,
         "source.git_ref": git_ref,
-        "dataset.train_filepath": train_csv,
-        "dataset.train_sha256": dataset_train_hash,
-        "dataset.validation_filepath": val_csv,
-        "dataset.validation_sha256": dataset_validation_hash,
-        "dataset.stats_sha256": dataset_stats_hash,
-        "dataset.images_extension": image_extension,
-        "dataset.loss_positive_weight": loss_pos_weight,
-        "dataset.images_base_dir": image_base_dir,
+        # "dataset.train_filepath": train_csv,
+        # "dataset.train_sha256": dataset_train_hash,
+        # "dataset.validation_filepath": val_csv,
+        # "dataset.validation_sha256": dataset_validation_hash,
+        # "dataset.stats_sha256": dataset_stats_hash,
+        # "dataset.images_extension": image_extension,
+        # "dataset.loss_positive_weight": loss_pos_weight,
+        # "dataset.images_base_dir": image_base_dir,
         "dataset.shuffle": dataset_shuffle,
         "environment.default_num_workers": default_num_workers,
         "environment.num_workers": num_workers,

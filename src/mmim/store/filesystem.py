@@ -31,6 +31,9 @@ class FilesystemReadOnlyStore(ReadOnlyStore):
         if fname.is_dir():
             raise IsADirectoryError(f"Path {fname} is a directory.")
 
+    def backend(self) -> str:
+        return "filesystem"
+
     def read_text(self, path: str, with_prefix: bool = True) -> str:
         fname = gen_path(
             base=self.dir, suffix=path, prefix=self.prefix if with_prefix else None

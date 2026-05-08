@@ -1,3 +1,5 @@
+from pathlib import Path
+from mmim.trainer.dataset_utils import ParsedDataset
 import pandas as pd
 
 
@@ -9,6 +11,7 @@ import torchvision.io as tvio
 
 from .models import vision_encoder
 from .transforms import PadToSquare
+from .utils import ImageResolver
 
 supported_image_extensions = ["jpg", "jpeg", "dcm", "dicom"]
 
@@ -16,6 +19,36 @@ supported_image_extensions = ["jpg", "jpeg", "dcm", "dicom"]
 extended_image_extensions = supported_image_extensions + [
     f".{e}" for e in supported_image_extensions
 ]
+
+
+class MMIMICImageResolver(ImageResolver):
+    def __init__(
+        self,
+        base_dir: str,
+        images_prefix: str,
+        path_template: str,
+        images_extension: str,
+    ):
+        super().__init__()
+        self.base_dir = Path(base_dir)
+        self.images_prefix = images_prefix
+        self.path_template = path_template
+        self.images_extension = images_extension
+
+    def resolve(self, row: pd.Series) -> str:
+        subject_id = str(row["subject_id"])
+        study_id = str(row["study_id"])
+        dicom_id = str(row["dicom_id"])
+
+        rel_path = self.path_template.format(
+            subject_prefix=subject_id[:2],
+            subject_id=subject_id,
+            study_id=study_id,
+            dicom_id=dicom_id,
+            images_extension=self.images_extension,
+        )
+
+        return str(self.base_dir / self.images_prefix / rel_path)
 
 
 class MIMICReduced(Dataset):
@@ -35,10 +68,8 @@ class MIMICReduced(Dataset):
     def __init__(
         self,
         df: pd.DataFrame,
-        dataset_stats: dict[str, dict[str, float]],
-        images_base_dir: str,
-        images_extension: str = "jpg",
-        label_column: str = "hospital_expire_flag",
+        dataset_config: ParsedDataset,
+        data_dir: str,
         debug: bool = False,
         limit: float | None = None,
         cpu_transforms=transformsV2.Compose(
@@ -50,6 +81,11 @@ class MIMICReduced(Dataset):
         ),
     ):
         super().__init__()
+
+        dataset_stats = dataset_config.stats
+        label_column = dataset_config.manifest["data"]["tabular"]["label_column"]
+        images_extension = dataset_config.manifest["data"]["images"]["extension"]
+
         if images_extension.lower().lstrip(".") not in extended_image_extensions:
             raise ValueError(
                 f"Extension {images_extension} is not supported. Supported extensions are: {', '.join(supported_image_extensions)}"
@@ -63,27 +99,46 @@ class MIMICReduced(Dataset):
         self.debug = debug
         self.transforms = cpu_transforms
         self.y: Tensor = torch.tensor(df[label_column].values, dtype=torch.float32)
-        self.images_extension = images_extension.rstrip("/").lower()
+        self.images_extension = images_extension
 
-        subject_ids = df["subject_id"].astype(str)
-        study_ids = df["study_id"].astype(str)
-        dicom_ids = df["dicom_id"].astype(str)
-        df["image_path"] = (
-            images_base_dir.rstrip("/")
-            + "/p"
-            + subject_ids.str[:2]
-            + "/p"
-            + subject_ids
-            + "/s"
-            + study_ids
-            + "/"
-            + dicom_ids
-            + "."
-            + images_extension.lstrip(".")
+        images_prefix = Path(dataset_config.data_prefix) / Path(
+            dataset_config.images_prefix
         )
-        df = df.drop(["subject_id", "study_id", "dicom_id"], axis=1)
+        image_resolver = MMIMICImageResolver(
+            base_dir=data_dir,
+            images_prefix=str(images_prefix),
+            path_template=dataset_config.images_path_template,
+            images_extension=images_extension,
+        )
+        df["image_path"] = df.apply(
+            image_resolver.resolve, axis=1
+        )  # pass rows, not columns
+
+        print("Downloading missing images...")
+        store = dataset_config.store
+
+        store.set_prefix(str(images_prefix))
+        for local_path in df["image_path"]:
+            l_path = Path(local_path)
+            rel_path = str(
+                l_path.relative_to(Path(data_dir) / images_prefix)
+            )  # the store doesn't know about the datadir, we changed the prefix
+
+            if not l_path.exists():
+                l_path.parent.mkdir(exist_ok=False, parents=True)
+                print(f"Reading from store {rel_path} and copying it to {l_path}...")
+                bytes = store.read_bytes(rel_path)
+
+                print(f"Writing to {l_path}")
+                with open(str(l_path), "wb") as f:
+                    f.write(bytes)
+            else:
+                print(f"{l_path} already exists.")
+        print("Done.")
 
         self.image_paths = df["image_path"].values
+
+        df = df.drop(["subject_id", "study_id", "dicom_id"], axis=1)
 
         if debug:
             df.to_csv("mimicreduced_debug.csv")

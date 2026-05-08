@@ -26,22 +26,18 @@ from .utils import int_from_env, float_from_env, bool_from_env
 # Be VERY CAREFUL when modifying `train_limit` as it really can impact this value!
 # loss_pos_weight = read from the dataset manifest
 
-debug = os.getenv("MMIM_DEBUG", "false").lower() in ["true", "1", "yes"]
+debug = bool_from_env("MMIM_TRAINER_DEBUG", False)
 
-image_base_dir = os.getenv(
-    "DATASET_IMAGES_BASEDIR",
-    "./dataset/mimic-cxr-jpg/physionet.org/files/mimic-cxr-jpg/2.1.0/files",
-)
-image_extension = os.getenv("DATASET_IMAGES_EXTENSION", "jpg")
 
-dataset_shuffle = bool_from_env("MMIM_DATASET_SHUFFLE", True)
+dataset_shuffle = bool_from_env("MMIM_TRAINER_DATASET_SHUFFLE", True)
 default_num_workers = max(((cpu_count() or 1) // 2) - 2, 0)
-num_workers = int_from_env("MMIM_NUM_WORKERS", default_num_workers)
+num_workers = int_from_env("MMIM_TRAINER_NUM_WORKERS", default_num_workers)
+working_directory = os.getenv("MMIM_TRAINER_WORKING_DIRECTORY", "./")
 
 hyperparameters = {
-    "batch_size": int_from_env("MMIM_BATCH_SIZE", 32),
-    "epochs": int_from_env("MMIM_EPOCHS", 10),
-    "dropout": float_from_env("MMIM_DROPOUT", 0.3),
-    "learning_rate": float_from_env("MMIM_LEARNING_RATE", 10e-4),
-    "train_limit": float_from_env("MMIM_TRAIN_LIMIT", 1.0),
+    "batch_size": int_from_env("MMIM_TRAINER_BATCH_SIZE", 32),
+    "epochs": int_from_env("MMIM_TRAINER_EPOCHS", 10),
+    "dropout": float_from_env("MMIM_TRAINER_DROPOUT", 0.3),
+    "learning_rate": float_from_env("MMIM_TRAINER_LEARNING_RATE", 10e-4),
+    "train_limit": float_from_env("MMIM_TRAINER_TRAIN_LIMIT", 1.0),
 }

@@ -1,17 +1,14 @@
-import json
 import torch.nn.functional as F
 from enum import Enum
 import torch
 from matplotlib.figure import Figure
 from torch import Tensor, nn
 import mlflow
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
 from .models.fusion import Fusion
 from .data import MIMICReduced
-from .config import image_extension, image_base_dir, hyperparameters
 
 
 class Architecture(Enum):
@@ -143,24 +140,25 @@ if __name__ == "__main__":
         "runs:/51fe9faf09c5470eb5a5a420bd1d03e3/multimodal_icu_mortality"
     )
 
-    with open("./dataset/stats.json", "r") as f:
-        ds = MIMICReduced(
-            df=pd.read_csv("./dataset/ds_val.csv"),
-            dataset_stats=json.load(f),
-            label_column="hospital_expire_flag",
-            images_extension=image_extension,
-            images_base_dir=image_base_dir,
-            debug=True,
-            # optional for the validation set as well but
-            # allows me to iterate faster
-            limit=hyperparameters["train_limit"],
-        )
+    # TODO: fix for the manifest architecture
+    # with open("./dataset/stats.json", "r") as f:
+    #     ds = MIMICReduced(
+    #         df=pd.read_csv("./dataset/ds_val.csv"),
+    #         dataset_stats=json.load(f),
+    #         label_column="hospital_expire_flag",
+    #         images_extension=image_extension,
+    #         images_base_dir=image_base_dir,
+    #         debug=True,
+    #         # optional for the validation set as well but
+    #         # allows me to iterate faster
+    #         limit=hyperparameters["train_limit"],
+    #     )
 
-    # Activations: A1...A1024
-    # Gradients: dy/dA
-    image_t, tab_t, _ = ds[0:1]  # keeps dimes to [1, C, H, W] for the image
-    fig = grad_cam(
-        image_tensor=image_t, tab_tensor=tab_t, model=model, transform_images=True
-    )
+    # # Activations: A1...A1024
+    # # Gradients: dy/dA
+    # image_t, tab_t, _ = ds[0:1]  # keeps dimes to [1, C, H, W] for the image
+    # fig = grad_cam(
+    #     image_tensor=image_t, tab_tensor=tab_t, model=model, transform_images=True
+    # )
 
-    plt.savefig("./gradcam.png", bbox_inches="tight", pad_inches=0, dpi=300)
+    # plt.savefig("./gradcam.png", bbox_inches="tight", pad_inches=0, dpi=300)

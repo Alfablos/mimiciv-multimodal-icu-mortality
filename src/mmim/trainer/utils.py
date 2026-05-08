@@ -1,5 +1,7 @@
+from abc import ABC
 import os
 from pathlib import Path
+import pandas as pd
 
 
 def int_from_env(name: str, default: int) -> int:
@@ -21,3 +23,12 @@ def bool_from_env(name: str, default: bool) -> bool:
 
 def find_paths(paths: list[str]) -> list[str]:
     return [p for p in paths if not Path(p).exists()]
+
+
+class ImageResolver(ABC):
+    def resolve(self, row: pd.Series) -> str:
+        raise NotImplementedError
+
+
+# def get_lakefs_client() -> Client:
+#     host = os.getenv("LAKEFS")

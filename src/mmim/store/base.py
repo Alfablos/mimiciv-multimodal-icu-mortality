@@ -11,6 +11,10 @@ def gen_path(base: Path, prefix: str | None, suffix: str) -> Path:
 
 
 class ReadOnlyStore(ABC):
+    @abstractmethod
+    def backend(self) -> str:
+        raise NotImplementedError
+
     # TODO: support passing a lambda to transform from the reader
     # + returning ContextManager[TextIO] and ContextManager[BinaryIO] in open_text() and open_binary()
     # @staticmethod

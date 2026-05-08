@@ -23,6 +23,9 @@ class LakeFSReadOnlyStore(ReadOnlyStore):
                 f"Initialized LakeFSReadOnlyStore in ref `{self.ref}` (repo `{self.repository}`) with default prefix `{self.prefix}`"
             )
 
+    def backend(self) -> str:
+        return "lakefs"
+
     def read_text(self, path: str, with_prefix: bool = True) -> str:
         fname = gen_path(
             base=Path("."), suffix=path, prefix=self.prefix if with_prefix else None

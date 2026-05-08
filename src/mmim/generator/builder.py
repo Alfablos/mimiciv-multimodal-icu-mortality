@@ -320,6 +320,7 @@ def build(args) -> tuple[str, str | None]:
                 "extension": "csv",
                 "storage": "lakefs" if commit_to_lakefs else "local",
                 "branch": lakefs_branch if commit_to_lakefs else None,
+                "label_column": label,
                 "files": {
                     "training": {
                         "path": "ds_train.csv",
@@ -354,7 +355,8 @@ def build(args) -> tuple[str, str | None]:
                 "repo": lakefs_repository if commit_to_lakefs else None,
                 "branch": lakefs_branch if commit_to_lakefs else None,
                 "prefix": image_data_prefix,
-                "path_template": "p{subject_id[:2]}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
+                # subject_prefix = subject_id[:2]
+                "path_template": "p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
             },
         },
         # negatives = survivors

@@ -1,4 +1,5 @@
-from pydantic.dataclasses import dataclass
+from pathlib import Path
+from dataclasses import dataclass
 from urllib.parse import urlparse, unquote, ParseResult
 from typing import Any
 import json
@@ -17,17 +18,18 @@ from mmim.store.lakefs import LakeFSReadOnlyStore
 @dataclass
 class ParsedDataset:
     train_ds: pd.DataFrame
-    val_df: pd.DataFrame
+    val_ds: pd.DataFrame
     stats: dict[str, Any]
-    image_store: ReadOnlyStore | None
-    image_extension: str | None
-    image_path_template: str | None
     defaults: dict[str, Any]
+    data_prefix: str
+    images_prefix: str
+    images_extension: str
+    images_path_template: str
+    store: ReadOnlyStore
     manifest: dict[str, Any]
 
 
 def parse_lakefs_uri(u: ParseResult) -> tuple[str, str, str]:
-
     repo = u.netloc
     other_parts = [unquote(p) for p in u.path.lstrip("/").split("/") if p]
     if len(other_parts) < 2:
@@ -50,9 +52,7 @@ def store_from_manifest(manifest_path: str) -> tuple[dict[str, Any], ReadOnlySto
             manifest = json.load(m)
 
         store = FilesystemReadOnlyStore(
-            os.getenv(
-                "MMIM_TRAINER_DATA_DIR", "./out"
-            ),  # like the "out" the generator defaults to
+            f"{Path(path).parent}",
             prefix=manifest["data_prefix"],
         )
 
@@ -87,35 +87,35 @@ def store_from_manifest(manifest_path: str) -> tuple[dict[str, Any], ReadOnlySto
 
 def parse_manifest(
     manifest_path: str,
-) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+) -> ParsedDataset:
     manifest, store = store_from_manifest(manifest_path)
+    data_prefix = manifest["data_prefix"]
+    images_prefix = manifest["data"]["images"]["prefix"]
+    images_extension = manifest["data"]["images"]["extension"]
 
     # TODO: instead of loading the whole dataset in memory use a reader in the store
 
     training_ds_str = store.read_bytes(
         manifest["data"]["tabular"]["files"]["training"]["path"]
     )  # defaults to with_prefix=True
-    training_data_format: str = manifest["data"]["tabular"]["files"]["training"][
-        "format"
-    ]
-    if training_data_format == "csv":
+    images_extension: str = manifest["data"]["tabular"]["files"]["training"]["format"]
+    if images_extension == "csv":
         train_ds = pd.read_csv(BytesIO(training_ds_str))
     else:
         raise ValueError(
-            f"Unsupported data format for training set: {training_data_format}"
+            f"Unsupported data format for training set: {images_extension}"
         )
+
+    # TODO: compact
 
     validation_ds_str = store.read_bytes(
         manifest["data"]["tabular"]["files"]["validation"]["path"]
     )  # defaults to with_prefix=True
-    validation_data_format: str = manifest["data"]["tabular"]["files"]["validation"][
-        "format"
-    ]
-    if validation_data_format == "csv":
+    if images_extension == "csv":
         val_ds = pd.read_csv(BytesIO(validation_ds_str))
     else:
         raise ValueError(
-            f"Unsupported data format for validation set: {validation_data_format}"
+            f"Unsupported data format for validation set: {images_extension}"
         )
 
     training_stats_str = store.read_text(
@@ -128,10 +128,21 @@ def parse_manifest(
         stats = json.loads(training_stats_str)
     else:
         raise ValueError(
-            f"Unsupported data format for training set: {training_data_format}"
+            f"Unsupported data format for training stats: {training_stats_format}"
         )
 
-    return train_ds, val_ds, stats
+    return ParsedDataset(
+        train_ds=train_ds,
+        val_ds=val_ds,
+        stats=stats,
+        defaults=manifest["defaults"],
+        data_prefix=data_prefix,
+        images_prefix=images_prefix,
+        images_extension=images_extension,
+        images_path_template=manifest["data"]["images"]["path_template"],
+        store=store,
+        manifest=manifest,
+    )
 
 
 if __name__ == "__main__":

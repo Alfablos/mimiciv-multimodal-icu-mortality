@@ -1,3 +1,5 @@
+from mmim.store.filesystem import FilesystemReadOnlyStore
+from mmim.trainer.dataset_utils import ParsedDataset, parse_manifest
 from typing import Literal
 
 import numpy as np
@@ -12,10 +14,8 @@ from torch.utils.data import DataLoader
 
 import mlflow
 import os
-import json
 from argparse import Namespace
 
-import pandas as pd
 import torch
 from torch.optim import AdamW
 from torch.nn import BCEWithLogitsLoss
@@ -25,18 +25,7 @@ import mlflow.pytorch
 from .data import MIMICReduced
 from .gradcam import grad_cam
 from .models.fusion import Fusion
-from .config import (
-    loss_pos_weight,
-    dataset_stats_file,
-    dataset_shuffle,
-    num_workers,
-    hyperparameters,
-    image_base_dir,
-    image_extension,
-    train_csv,
-    val_csv,
-    debug,
-)
+from .config import dataset_shuffle, num_workers, hyperparameters, debug
 from .meta import log_metadata
 
 
@@ -213,17 +202,24 @@ def get_metrics(preds, labels):
 
 
 def train_cli(args: Namespace):
+    ds_config = parse_manifest(args.manifest_uri)
 
-    return start_train()
+    return start_train(
+        dataset_config=ds_config,
+    )
 
 
-def start_train():
+def start_train(dataset_config: ParsedDataset, working_directory: str = "./out"):
     if hyperparameters["train_limit"] != 1.0:
         print(
             f"WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid."
         )
-    with open(dataset_stats_file, "r") as f:
-        ds_stats = json.load(f)
+
+    working_directory = (
+        f"{dataset_config.store.dir}"
+        if isinstance(dataset_config.store, FilesystemReadOnlyStore)
+        else working_directory
+    )
 
     mlflow.set_experiment(
         os.getenv("MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality")
@@ -259,11 +255,9 @@ def start_train():
         model = Fusion(dropout=hyperparameters["dropout"])
 
         train_ds = MIMICReduced(
-            df=pd.read_csv(train_csv),
-            dataset_stats=ds_stats,
-            label_column="hospital_expire_flag",
-            images_extension=image_extension,
-            images_base_dir=image_base_dir,
+            df=dataset_config.train_ds,
+            dataset_config=dataset_config,
+            data_dir=working_directory,
             debug=debug,
             limit=hyperparameters["train_limit"],
         )
@@ -276,14 +270,10 @@ def start_train():
         )
 
         val_ds = MIMICReduced(
-            df=pd.read_csv(val_csv),
-            dataset_stats=ds_stats,
-            label_column="hospital_expire_flag",
-            images_extension=image_extension,
-            images_base_dir=image_base_dir,
+            df=dataset_config.val_ds,
+            dataset_config=dataset_config,
+            data_dir=working_directory,
             debug=debug,
-            # optional for the validation set as well but
-            # allowes me to iterate faster
             limit=hyperparameters["train_limit"],
         )
         val_dl = DataLoader(
@@ -298,7 +288,7 @@ def start_train():
             # this tensor is still on the CPU
             # be sure to move it to(device)
             pos_weight=torch.tensor(
-                [loss_pos_weight]
+                [dataset_config.manifest["defaults"]["loss_pos_weight"]]
             )  # so pytorch is free to broadcast it
         )
 
