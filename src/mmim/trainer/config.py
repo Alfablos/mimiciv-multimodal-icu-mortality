@@ -33,6 +33,7 @@ dataset_shuffle = bool_from_env("MMIM_TRAINER_DATASET_SHUFFLE", True)
 default_num_workers = max(((cpu_count() or 1) // 2) - 2, 0)
 num_workers = int_from_env("MMIM_TRAINER_NUM_WORKERS", default_num_workers)
 working_directory = os.getenv("MMIM_TRAINER_WORKING_DIRECTORY", "./")
+model_selection_metric = os.getenv("MMIM_TRAINER_MODEL_SELECTION_METRIC", "AUROC")
 
 hyperparameters = {
     "batch_size": int_from_env("MMIM_TRAINER_BATCH_SIZE", 32),
