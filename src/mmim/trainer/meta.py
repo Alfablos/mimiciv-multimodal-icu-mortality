@@ -15,7 +15,7 @@ from .config import (
 )
 
 
-def get_git_repo() -> Repo:
+def get_local_repo() -> Repo:
     try:
         r = Repo(".")
     except git.exc.InvalidGitRepositoryError:
@@ -30,7 +30,7 @@ def log_metadata(no_send=False):
     git_ref = os.getenv("GIT_REF")
 
     if git_sha is None or git_ref is None:
-        repo = get_git_repo()
+        repo = get_local_repo()
 
     if git_sha is None:
         git_sha = repo.head.commit.hexsha
