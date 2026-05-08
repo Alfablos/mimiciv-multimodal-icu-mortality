@@ -32,6 +32,11 @@ orchestrator = [
     "dagster-webserver>=1.13.3",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
 [tool.uv]
 package = true
 
