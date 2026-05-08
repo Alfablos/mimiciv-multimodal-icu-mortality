@@ -117,17 +117,19 @@ class MIMICReduced(Dataset):
         print("Downloading missing images...")
         store = dataset_config.store
 
-        store.set_prefix(str(images_prefix))
         for local_path in df["image_path"]:
             l_path = Path(local_path)
             rel_path = str(
                 l_path.relative_to(Path(data_dir) / images_prefix)
             )  # the store doesn't know about the datadir, we changed the prefix
+            store_key = str(images_prefix / rel_path)
 
             if not l_path.exists():
-                l_path.parent.mkdir(exist_ok=False, parents=True)
-                print(f"Reading from store {rel_path} and copying it to {l_path}...")
-                bytes = store.read_bytes(rel_path)
+                l_path.parent.mkdir(exist_ok=True, parents=True)
+                print(f"Reading from store {store_key} and copying it to {l_path}...")
+                bytes = store.read_bytes(
+                    store_key, with_prefix=False
+                )  # manually handling the prefix
 
                 print(f"Writing to {l_path}")
                 with open(str(l_path), "wb") as f:

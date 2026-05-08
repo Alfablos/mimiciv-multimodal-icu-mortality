@@ -98,12 +98,14 @@ def parse_manifest(
     training_ds_str = store.read_bytes(
         manifest["data"]["tabular"]["files"]["training"]["path"]
     )  # defaults to with_prefix=True
-    images_extension: str = manifest["data"]["tabular"]["files"]["training"]["format"]
-    if images_extension == "csv":
+    training_data_format: str = manifest["data"]["tabular"]["files"]["training"][
+        "format"
+    ]
+    if training_data_format == "csv":
         train_ds = pd.read_csv(BytesIO(training_ds_str))
     else:
         raise ValueError(
-            f"Unsupported data format for training set: {images_extension}"
+            f"Unsupported data format for training set: {training_data_format}"
         )
 
     # TODO: compact
@@ -111,11 +113,14 @@ def parse_manifest(
     validation_ds_str = store.read_bytes(
         manifest["data"]["tabular"]["files"]["validation"]["path"]
     )  # defaults to with_prefix=True
-    if images_extension == "csv":
+    validation_data_format: str = manifest["data"]["tabular"]["files"]["validation"][
+        "format"
+    ]
+    if validation_data_format == "csv":
         val_ds = pd.read_csv(BytesIO(validation_ds_str))
     else:
         raise ValueError(
-            f"Unsupported data format for validation set: {images_extension}"
+            f"Unsupported data format for validation set: {validation_data_format}"
         )
 
     training_stats_str = store.read_text(

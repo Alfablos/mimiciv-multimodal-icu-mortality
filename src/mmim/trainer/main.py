@@ -15,8 +15,15 @@ def main():
         "--manifest-uri",
         "--manifest",
         help="The path to the manifest.json file",
+        required=True,
     )
-    train_cmd.add_argument("-w", "--working-directory", "--workdir", default="./")
+    train_cmd.add_argument(
+        "-w",
+        "--working-directory",
+        "--workdir",
+        default="./",
+        help="Where training data will be stored. It'll be ignored for filesystem-based stores, that is, for manifest URIs starting with `file://`, to avoid data duplication.",
+    )
 
     train_cmd.set_defaults(func=train_cli)
 

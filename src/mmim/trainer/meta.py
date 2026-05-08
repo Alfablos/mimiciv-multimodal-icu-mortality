@@ -29,12 +29,12 @@ def log_metadata(no_send=False):
     git_sha = os.getenv("GIT_SHA")
     git_ref = os.getenv("GIT_REF")
 
-    if git_sha is None:
+    if git_sha is None or git_ref is None:
         repo = get_git_repo()
+
+    if git_sha is None:
         git_sha = repo.head.commit.hexsha
     if git_ref is None:
-        if not repo:
-            repo = get_git_repo()
         git_ref = repo.head.ref.name
 
     # with open(train_csv, "rb") as f:

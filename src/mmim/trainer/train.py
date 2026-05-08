@@ -205,7 +205,7 @@ def train_cli(args: Namespace):
     ds_config = parse_manifest(args.manifest_uri)
 
     return start_train(
-        dataset_config=ds_config,
+        dataset_config=ds_config, working_directory=args.working_directory
     )
 
 
@@ -279,7 +279,7 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
         val_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=val_ds,
-            shuffle=dataset_shuffle,
+            shuffle=False,  # making val_ds more deterministic
             batch_size=hyperparameters["batch_size"],
             num_workers=num_workers,
         )
