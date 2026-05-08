@@ -14,7 +14,7 @@ def main():
         "-m",
         "--manifest-uri",
         "--manifest",
-        help="The path to the manifest.json file",
+        help="The path to the manifest.json file in URI form. Supported schemes are `file://` and `lakefs://`",
         required=True,
     )
     train_cmd.add_argument(

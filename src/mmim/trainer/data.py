@@ -96,6 +96,8 @@ class MIMICReduced(Dataset):
         elif limit:
             df = df.sample(frac=limit, random_state=42).reset_index(drop=True)
 
+        df = df.copy()
+
         self.debug = debug
         self.transforms = cpu_transforms
         self.y: Tensor = torch.tensor(df[label_column].values, dtype=torch.float32)
@@ -127,13 +129,13 @@ class MIMICReduced(Dataset):
             if not l_path.exists():
                 l_path.parent.mkdir(exist_ok=True, parents=True)
                 print(f"Reading from store {store_key} and copying it to {l_path}...")
-                bytes = store.read_bytes(
+                img_bytes = store.read_bytes(
                     store_key, with_prefix=False
                 )  # manually handling the prefix
 
                 print(f"Writing to {l_path}")
                 with open(str(l_path), "wb") as f:
-                    f.write(bytes)
+                    f.write(img_bytes)
             else:
                 print(f"{l_path} already exists.")
         print("Done.")
