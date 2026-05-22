@@ -1,16 +1,17 @@
-from typing import Any
 import pandas as pd
 import git
 from git import Repo
 import hashlib
 from pathlib import Path
 
+from mmim.generator import manifest
+
 
 def find_paths(paths: list[str]) -> list[str]:
     return [p for p in paths if not Path(p).exists()]
 
 
-def sha256str(text: str):
+def sha256str(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -40,7 +41,7 @@ def get_local_repo() -> Repo:
 
 def df_schema(
     df: pd.DataFrame, label_column: str, id_columns: list[str]
-) -> dict[str, Any]:
+) -> manifest.SchemaSpecV1:
     columns = {}
 
     for col in df.columns:
@@ -61,31 +62,33 @@ def compute_pos_negs(ds: pd.DataFrame, label_column: str) -> tuple[int, int, int
     return total, positives, negatives
 
 
-def dataset_summary(ds: pd.DataFrame, label_column: str):
+def dataset_summary(ds: pd.DataFrame, label_column: str) -> manifest.SplitSummaryV1:
     total, positives, negatives = compute_pos_negs(ds=ds, label_column=label_column)
-    return {
-        "total": total,
-        "positives": positives,
-        "negatives": negatives,
-        "prevalence": positives / total,
-    }
+    return manifest.SplitSummaryV1(
+        total=total,
+        positives=positives,
+        negatives=negatives,
+        prevalence=positives / total,
+    )
 
 
-def leakage_check(train_ds: pd.DataFrame, val_ds: pd.DataFrame, test_ds: pd.DataFrame):
+def leakage_check(
+    train_ds: pd.DataFrame, val_ds: pd.DataFrame, test_ds: pd.DataFrame
+) -> manifest.LeakageCheckV1:
     train_set = set(train_ds["subject_id"])
     val_set = set(val_ds["subject_id"])
     test_set = set(test_ds["subject_id"])
 
-    no_leakages = {
-        "train_val_are_disjoint": train_set.isdisjoint(val_set),
-        "train_test_are_disjoint": train_set.isdisjoint(test_set),
-        "val_test_are_disjoint": val_set.isdisjoint(test_set),
-    }
+    check = manifest.LeakageCheckV1(
+        train_val_are_disjoint=train_set.isdisjoint(val_set),
+        train_test_are_disjoint=train_set.isdisjoint(test_set),
+        val_test_are_disjoint=val_set.isdisjoint(test_set),
+    )
 
-    if not all(no_leakages.values()):
-        raise ValueError(f"Leakage tests not passed; leakage detected: {no_leakages}")
+    if not check.is_passed():
+        raise ValueError(f"Leakage tests not passed; leakage detected: {check}")
 
-    return no_leakages
+    return check
 
 
 def build_image_paths(ds: pd.DataFrame, base_dir: str, images_extension):

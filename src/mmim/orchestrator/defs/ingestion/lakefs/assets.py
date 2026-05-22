@@ -4,7 +4,7 @@ import dagster as dg
 import pandas as pd
 from io import StringIO
 
-from orchestrator.defs.ingestion.lakefs.resources import LakeFSResource
+from mmim.orchestrator.defs.ingestion.lakefs.resources import LakeFSResource
 
 
 class LakeFSRepoRef(dg.Config):
