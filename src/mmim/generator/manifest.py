@@ -120,7 +120,6 @@ class TabularFilesSpecV1(BaseModel):
 class TabularDataSpec(BaseModel):
     model_config = _general_model_config
     storage: StorageSpec
-    prefix: str
     extension: Literal["csv"]
     label_column: str
     files: TabularFilesSpecV1
@@ -161,3 +160,7 @@ class ManifestV1(BaseModel):
     data_prefix: str
     data: DataSpecV1
     defaults: DatasetDefaultsV1
+
+    @classmethod
+    def from_json(cls, s: str) -> "ManifestV1":
+        return cls.model_validate_json(s)

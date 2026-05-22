@@ -115,16 +115,15 @@ def build(args) -> BuildOutput:
     if images_base_dir is None:
         raise ValueError("--images-base-dir is required")
 
-    if images_base_dir is not None:
-        split = images_base_dir.split("@")
-        if len(split) != 2:
-            raise ValueError(f"{images_base_dir} is not a valid <dir>@<alias> string.")
-        if len(split[1].split(" ")) > 1:
-            raise ValueError(
-                f"{images_base_dir} is not a valid <dir>@<alias> string. The alias cannot contain spaces."
-            )
-        images_base_dir = split[0]
-        images_base_dir_alias = split[1].rstrip("/")
+    split = images_base_dir.split("@")
+    if len(split) != 2:
+        raise ValueError(f"{images_base_dir} is not a valid <dir>@<alias> string.")
+    if len(split[1].split(" ")) > 1:
+        raise ValueError(
+            f"{images_base_dir} is not a valid <dir>@<alias> string. The alias cannot contain spaces."
+        )
+    images_base_dir = split[0]
+    images_base_dir_alias = split[1].rstrip("/")
 
     git_sha = os.getenv("GIT_SHA")
     git_ref = os.getenv("GIT_REF")
@@ -343,7 +342,6 @@ def build(args) -> BuildOutput:
         data=DataSpecV1(
             tabular=TabularDataSpec(
                 storage=storage,
-                prefix=common_data_prefix,
                 extension="csv",
                 label_column=label,
                 files=TabularFilesSpecV1(
