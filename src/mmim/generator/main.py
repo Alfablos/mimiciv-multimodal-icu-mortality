@@ -47,9 +47,9 @@ def main():
         "--images-base-dir",
         "--images-basedir",
         "--images-dir",
-        required=False,
+        required=True,
         help="""
-        The path to the root of the images dataset and its alias (no spaces allowed in the alias). If not provided checks will be skipped.
+        The path to the root of the images dataset and its alias (no spaces allowed in the alias).
         Format: ./path/to/dir@alias. Example: /home/myuser/datasets/mimic-images@mimic-cxr-jpg
         """,
     )

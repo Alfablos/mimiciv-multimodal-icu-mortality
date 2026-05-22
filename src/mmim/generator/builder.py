@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import cast
 import json
 import os
 from sklearn.model_selection import train_test_split
@@ -26,10 +27,17 @@ from .utils import (
 
 from .manifest import (
     ManifestV1,
+    DataFileSpecV1,
     SplitsSpecV1,
     QueriesSpecV1,
     GeneratorCodeSpec,
     DataSpecV1,
+    FilesystemStorage,
+    ImageDataSpec,
+    ImageExtension,
+    LakeFSStorage,
+    TabularDataSpec,
+    TabularFilesSpecV1,
     DatasetDefaultsV1,
 )
 
@@ -103,6 +111,9 @@ def build(args) -> BuildOutput:
     images_base_dir = args.images_base_dir
     max_workers = args.max_workers
     debug = args.debug
+
+    if images_base_dir is None:
+        raise ValueError("--images-base-dir is required")
 
     if images_base_dir is not None:
         split = images_base_dir.split("@")
@@ -225,10 +236,6 @@ def build(args) -> BuildOutput:
                 f"The following images are required but were not found:\n {'\n'.join(not_found_required_files)}"
             )
         print("Images check OK.")
-    else:
-        print(
-            "WARNING: --images-base-dir was not provided. I'm unable to check for missing images. You're on your own."
-        )
 
     print("About to check for null values. ")
     for feat in core_features_allowed_missing:
@@ -294,15 +301,6 @@ def build(args) -> BuildOutput:
     )
     json_schema = json.dumps(obj=schema, indent=2, sort_keys=True)
 
-    queries = {
-        "images_query_sha256": sha256str(images_query),
-        "images_query": images_query,
-        "cohort_query_sha256": sha256str(cohort_query),
-        "cohort_query": cohort_query,
-        "features_query_sha256": sha256str(labs_n_vitals_query),
-        "features_query": labs_n_vitals_query,
-    }
-
     _, train_positives, train_negatives = compute_pos_negs(
         ds=train_ds, label_column=label
     )
@@ -310,77 +308,18 @@ def build(args) -> BuildOutput:
     common_data_prefix = DATASET_NAME + "/" + dataset_version
     image_data_prefix = images_base_dir_alias
 
-    manifest = {
-        "dataset": DATASET_NAME,
-        "dataset_version": dataset_version,
-        "schema_version": "v1",
-        "prediction_time": "icu_intime",
-        "lookback_window_hours": 24,
-        "sources": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
-        "generator_code": {
-            "git_sha": git_sha,
-            "git_ref": git_ref,
-        },
-        "queries": queries,
-        "splits": {
-            "strategy": "first_stay_per_subject_first_cxr_random_split",
-            "random_seed": random_seed,
-            "train": dataset_summary(train_ds, label),
-            "validation": dataset_summary(val_ds, label),
-            "test": dataset_summary(test_ds, label),
-            "leakage_checks": leakage_check(train_ds, val_ds, test_ds),
-        },
-        "data_prefix": common_data_prefix,
-        "data": {
-            "tabular": {
-                "extension": "csv",
-                "storage": "lakefs" if commit_to_lakefs else "local",
-                "branch": lakefs_branch if commit_to_lakefs else None,
-                "label_column": label,
-                "files": {
-                    "training": {
-                        "path": "ds_train.csv",
-                        "format": "csv",
-                        "sha256": sha256str(train_ds_csv),
-                    },
-                    "validation": {
-                        "path": "ds_val.csv",
-                        "format": "csv",
-                        "sha256": sha256str(val_ds_csv),
-                    },
-                    "test": {
-                        "path": "ds_test.csv",
-                        "format": "csv",
-                        "sha256": sha256str(test_ds_csv),
-                    },
-                    "statistics": {
-                        "path": "stats.json",
-                        "format": "json",
-                        "sha256": sha256str(json_stats),
-                    },
-                    "schema": {
-                        "path": "schema.json",
-                        "format": "json",
-                        "sha256": sha256str(json_schema),
-                    },
-                },
-            },
-            "images": {
-                "extension": images_extension,
-                "storage": "lakefs" if commit_to_lakefs else "local",
-                "repo": lakefs_repository if commit_to_lakefs else None,
-                "branch": lakefs_branch if commit_to_lakefs else None,
-                "prefix": image_data_prefix,
-                # subject_prefix = subject_id[:2]
-                "path_template": "p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
-            },
-        },
-        # negatives = survivors
-        # positives = deaths
-        "defaults": {"loss_pos_weight": float(train_negatives / train_positives)},
-    }
+    if commit_to_lakefs:
+        assert lakefs_repository is not None
+        storage = LakeFSStorage(
+            kind="lakefs", repo=lakefs_repository, ref=lakefs_branch
+        )
+    else:
+        storage = FilesystemStorage(kind="filesystem", root=output_dir)
 
-    manifesto: ManifestV1 = ManifestV1(  # noqa: F841
+    image_extension = cast(ImageExtension, images_extension)
+
+    manifest = ManifestV1(
+        dataset=DATASET_NAME,
         dataset_version=dataset_version,
         schema_version="v1",
         prediction_time="icu_intime",
@@ -401,13 +340,56 @@ def build(args) -> BuildOutput:
             leakage_checks=leakage_check(train_ds, val_ds, test_ds),
         ),
         data_prefix=common_data_prefix,
-        data=DataSpecV1(),
+        data=DataSpecV1(
+            tabular=TabularDataSpec(
+                storage=storage,
+                prefix=common_data_prefix,
+                extension="csv",
+                label_column=label,
+                files=TabularFilesSpecV1(
+                    training=DataFileSpecV1(
+                        path="ds_train.csv",
+                        format="csv",
+                        sha256=sha256str(train_ds_csv),
+                    ),
+                    validation=DataFileSpecV1(
+                        path="ds_val.csv",
+                        format="csv",
+                        sha256=sha256str(val_ds_csv),
+                    ),
+                    test=DataFileSpecV1(
+                        path="ds_test.csv",
+                        format="csv",
+                        sha256=sha256str(test_ds_csv),
+                    ),
+                    statistics=DataFileSpecV1(
+                        path="stats.json",
+                        format="json",
+                        sha256=sha256str(json_stats),
+                    ),
+                    schema=DataFileSpecV1(
+                        path="schema.json",
+                        format="json",
+                        sha256=sha256str(json_schema),
+                    ),
+                ),
+            ),
+            images=ImageDataSpec(
+                storage=storage,
+                prefix=image_data_prefix,
+                extension=image_extension,
+                # subject_prefix = subject_id[:2]
+                path_template="p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
+            ),
+        ),
         defaults=DatasetDefaultsV1(
             loss_pos_weight=float(train_negatives / train_positives)
         ),
     )
 
-    json_manifest = json.dumps(manifest, indent=2, sort_keys=True)
+    json_manifest = json.dumps(
+        manifest.model_dump(mode="json", by_alias=True), indent=2, sort_keys=True
+    )
 
     commit_message = f"Generated by mmim-generator {git_ref}/{git_sha}"
     commit_metadata: dict[str, str] = {"builder_ref": git_ref, "builder_sha": git_sha}
