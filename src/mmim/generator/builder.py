@@ -103,15 +103,28 @@ random_seed = 42
 class BuildOutput:
     output_dir: str
     lakefs_ref: str | None
+    manifest: ManifestV1
 
 
-def build(args) -> BuildOutput:
-    duckdb_db = args.database_path
-    metadata_file = args.metadata_file
-    images_base_dir = args.images_base_dir
-    max_workers = args.max_workers
-    debug = args.debug
+def build_cli(args):
+    _ = build(
+        args.database_path,
+        args.metadata_file,
+        args.images_base_dir,
+        args.max_workers,
+        args.debug,
+        args.output_dir,
+    )
 
+
+def build(
+    duckdb_db: str,
+    metadata_file: str,
+    images_base_dir: str,
+    max_workers: int,
+    debug: bool,
+    output_dir: str,
+) -> BuildOutput:
     if images_base_dir is None:
         raise ValueError("--images-base-dir is required")
 
@@ -155,9 +168,7 @@ def build(args) -> BuildOutput:
     if (lakefs_repository is None or lakefs_repository == "") and commit_to_lakefs:
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
-    output_dir = (
-        os.getenv("MMIM_GENERATOR_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
-    )
+    output_dir = os.getenv("MMIM_GENERATOR_OUTPUT_DIR", output_dir).rstrip("/") + "/"
 
     dataset_version = os.getenv(
         "MMIM_GENERATOR_DATASET_VERSION", default_dataset_version
@@ -376,7 +387,7 @@ def build(args) -> BuildOutput:
                 storage=storage,
                 prefix=image_data_prefix,
                 extension=image_extension,
-                # subject_prefix = subject_id[:2]
+                # subject_prefix is subject_id[:2]
                 path_template="p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
             ),
         ),
@@ -497,9 +508,11 @@ def build(args) -> BuildOutput:
             print("Nothing to commit.")
             commit_id = lake_store.get_branch().head.get_commit().id
 
-        return BuildOutput(output_dir=output_dir, lakefs_ref=commit_id)
+        return BuildOutput(
+            output_dir=output_dir, lakefs_ref=commit_id, manifest=manifest
+        )
     else:
-        return BuildOutput(output_dir=output_dir, lakefs_ref=None)
+        return BuildOutput(output_dir=output_dir, lakefs_ref=None, manifest=manifest)
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:

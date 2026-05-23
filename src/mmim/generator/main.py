@@ -1,7 +1,7 @@
 from os import cpu_count
 from argparse import ArgumentParser
 
-from .builder import build
+from .builder import build_cli
 
 
 def main():
@@ -64,7 +64,7 @@ def main():
         default=int((cpu_count() or 16) / 2),
     )
 
-    build_cmd.set_defaults(func=build)
+    build_cmd.set_defaults(func=build_cli)
 
     args = parser.parse_args()
     args.func(args)
