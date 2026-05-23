@@ -262,8 +262,8 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
         )
 
     working_directory = (
-        f"{dataset_config.store.dir}"
-        if isinstance(dataset_config.store, FilesystemReadOnlyStore)
+        f"{dataset_config.tabular_store.dir}"
+        if isinstance(dataset_config.tabular_store, FilesystemReadOnlyStore)
         else working_directory
     )
 
@@ -335,7 +335,7 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
             # this tensor is still on the CPU
             # be sure to move it to(device)
             pos_weight=torch.tensor(
-                [dataset_config.manifest["defaults"]["loss_pos_weight"]]
+                [dataset_config.manifest.defaults.loss_pos_weight]
             )  # so pytorch is free to broadcast it
         )
 

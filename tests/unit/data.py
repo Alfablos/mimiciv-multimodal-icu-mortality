@@ -4,6 +4,21 @@ from typing import Any
 
 import pandas as pd
 
+from mmim.generator.manifest import (
+    DataFileSpecV1,
+    DataSpecV1,
+    DatasetDefaultsV1,
+    FilesystemStorage,
+    GeneratorCodeSpec,
+    ImageDataSpec,
+    LeakageCheckV1,
+    ManifestV1,
+    QueriesSpecV1,
+    SplitSummaryV1,
+    SplitsSpecV1,
+    TabularDataSpec,
+    TabularFilesSpecV1,
+)
 from mmim.trainer.data import MIMICReduced
 from mmim.trainer.dataset_utils import ParsedDataset
 from mmim.store.filesystem import FilesystemReadOnlyStore
@@ -216,29 +231,76 @@ def _copy_fixture_images(store_root: Path, images_extension: str) -> None:
 
 
 def build_test_config(store_root: Path, images_extension: str = "jpg") -> ParsedDataset:
-    manifest: dict[str, Any] = {
-        "data_prefix": DATA_PREFIX,
-        "defaults": {"loss_pos_weight": 1.0},
-        "data": {
-            "tabular": {"label_column": "hospital_expire_flag"},
-            "images": {
-                "prefix": IMAGES_PREFIX,
-                "extension": images_extension,
-                "path_template": IMAGE_PATH_TEMPLATE,
-            },
-        },
-    }
+    storage = FilesystemStorage(kind="filesystem", root=str(store_root))
+    split_summary = SplitSummaryV1(total=2, positives=0, negatives=2, prevalence=0.0)
+    manifest = ManifestV1(
+        dataset="multimodal-icu-mortality-24h",
+        dataset_version="v001",
+        schema_version="v1",
+        prediction_time="icu_intime",
+        lookback_window_hours=24,
+        sources=["MIMIC-IV", "MIMIC-CXR"],
+        generator_code=GeneratorCodeSpec(git_sha="test", git_ref="test"),
+        queries=QueriesSpecV1(
+            images_query="select 1",
+            cohort_query="select 1",
+            features_query="select 1",
+        ),
+        splits=SplitsSpecV1(
+            strategy="test",
+            random_seed=42,
+            train=split_summary,
+            validation=split_summary,
+            test=split_summary,
+            leakage_checks=LeakageCheckV1(
+                train_val_are_disjoint=True,
+                train_test_are_disjoint=True,
+                val_test_are_disjoint=True,
+            ),
+        ),
+        data_prefix=DATA_PREFIX,
+        data=DataSpecV1(
+            tabular=TabularDataSpec(
+                storage=storage,
+                extension="csv",
+                label_column="hospital_expire_flag",
+                files=TabularFilesSpecV1(
+                    training=DataFileSpecV1(
+                        path="ds_train.csv", format="csv", sha256="test"
+                    ),
+                    validation=DataFileSpecV1(
+                        path="ds_val.csv", format="csv", sha256="test"
+                    ),
+                    test=DataFileSpecV1(
+                        path="ds_test.csv", format="csv", sha256="test"
+                    ),
+                    statistics=DataFileSpecV1(
+                        path="stats.json", format="json", sha256="test"
+                    ),
+                    schema=DataFileSpecV1(
+                        path="schema.json", format="json", sha256="test"
+                    ),
+                ),
+            ),
+            images=ImageDataSpec.model_construct(
+                storage=storage,
+                prefix=IMAGES_PREFIX,
+                extension=images_extension,
+                path_template=IMAGE_PATH_TEMPLATE,
+            ),
+        ),
+        defaults=DatasetDefaultsV1(loss_pos_weight=1.0),
+    )
     return ParsedDataset(
         train_ds=pd.DataFrame(data),
         val_ds=pd.DataFrame(data),
+        test_ds=pd.DataFrame(data),
         stats=stats,
-        defaults=manifest["defaults"],
-        data_prefix=DATA_PREFIX,
-        images_prefix=IMAGES_PREFIX,
-        images_extension=images_extension,
-        images_path_template=IMAGE_PATH_TEMPLATE,
-        store=FilesystemReadOnlyStore(str(store_root), prefix=DATA_PREFIX),
         manifest=manifest,
+        tabular_store=FilesystemReadOnlyStore(str(store_root), prefix=DATA_PREFIX),
+        images_store=FilesystemReadOnlyStore(
+            str(store_root), prefix=f"{DATA_PREFIX}/{IMAGES_PREFIX}"
+        ),
     )
 
 
