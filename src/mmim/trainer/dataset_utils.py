@@ -102,10 +102,11 @@ def store_from_storage(storage: StorageSpec, prefix: str):
             raise ValueError(f"Wrong kind of storage: {storage.kind}. This is a bug.")
 
 
-def parse_manifest(manifest_uri: str) -> ParsedDataset:
-    # manifest, store = store_from_manifest(manifest_uri)
+def manifest_from_uri(manifest_uri: str) -> ManifestV1:
+    return load_manifest(manifest_uri)
 
-    manifest = load_manifest(manifest_uri)
+
+def parsed_dataset_from_manifest(manifest: ManifestV1) -> ParsedDataset:
     tabular_store = store_from_storage(
         storage=manifest.data.tabular.storage, prefix=manifest.data_prefix
     )

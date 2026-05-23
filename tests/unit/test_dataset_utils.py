@@ -18,10 +18,16 @@ from mmim.generator.manifest import (
     TabularFilesSpecV1,
 )
 from mmim.store.filesystem import FilesystemReadOnlyStore
-from mmim.trainer.dataset_utils import ParsedDataset, parse_manifest
+from mmim.trainer.dataset_utils import (
+    ParsedDataset,
+    manifest_from_uri,
+    parsed_dataset_from_manifest,
+)
 
 
-def test_parse_manifest_loads_tabular_data_and_image_metadata(tmp_path):
+def test_manifest_uri_then_parsed_dataset_loads_tabular_data_and_image_metadata(
+    tmp_path,
+):
     data_prefix = "multimodal-icu-mortality-24h/v001"
     dataset_dir = tmp_path / data_prefix
     dataset_dir.mkdir(parents=True)
@@ -111,8 +117,11 @@ def test_parse_manifest_loads_tabular_data_and_image_metadata(tmp_path):
         json.dumps(manifest.model_dump(mode="json", by_alias=True))
     )
 
-    parsed = parse_manifest(f"file://{manifest_path}")
+    loaded_manifest = manifest_from_uri(f"file://{manifest_path}")
+    parsed = parsed_dataset_from_manifest(loaded_manifest)
 
+    assert isinstance(loaded_manifest, ManifestV1)
+    assert loaded_manifest.data_prefix == data_prefix
     assert isinstance(parsed, ParsedDataset)
     assert isinstance(parsed.tabular_store, FilesystemReadOnlyStore)
     assert isinstance(parsed.images_store, FilesystemReadOnlyStore)

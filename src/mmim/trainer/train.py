@@ -1,5 +1,9 @@
 from mmim.store.filesystem import FilesystemReadOnlyStore
-from mmim.trainer.dataset_utils import ParsedDataset, parse_manifest
+from mmim.trainer.dataset_utils import (
+    ParsedDataset,
+    manifest_from_uri,
+    parsed_dataset_from_manifest,
+)
 from typing import Literal
 
 import numpy as np
@@ -248,7 +252,8 @@ def get_metrics(preds, labels) -> dict[str, float]:
 
 
 def train_cli(args: Namespace):
-    ds_config = parse_manifest(args.manifest_uri)
+    manifest = manifest_from_uri(args.manifest_uri)
+    ds_config = parsed_dataset_from_manifest(manifest)
 
     return start_train(
         dataset_config=ds_config, working_directory=args.working_directory
