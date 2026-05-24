@@ -1,17 +1,27 @@
 from multiprocessing import cpu_count
-from mmim.orchestrator.defs.pipeline.model import DatasetManifestOutput
+from mmim.orchestrator.defs.pipeline.model import (
+    DatasetManifestOutput,
+    TrainingRunOutput,
+)
 import dagster as dg
 
 
 from mmim.generator.builder import build
-from mmim.trainer.dataset_utils import manifest_from_uri
+from mmim.trainer.dataset_utils import manifest_from_uri, parsed_dataset_from_manifest
+from mmim.trainer.train import start_train
+from mmim.trainer.config import Hyperparameters
 
 
-from mmim.orchestrator.defs.pipeline.config import DatasetManifestConfig
+from mmim.orchestrator.defs.pipeline.config import (
+    DatasetManifestConfig,
+    TrainingRunConfig,
+)
 
 
 @dg.asset
-def dataset_manifest(context: dg.AssetExecutionContext, config: DatasetManifestConfig):
+def dataset_manifest(
+    context: dg.AssetExecutionContext, config: DatasetManifestConfig
+) -> DatasetManifestOutput:
     if config.manifest_uri is not None:
         manifest = manifest_from_uri(config.manifest_uri)
         return DatasetManifestOutput(
@@ -31,7 +41,7 @@ def dataset_manifest(context: dg.AssetExecutionContext, config: DatasetManifestC
             duckdb_db=config.database_path,
             metadata_file=config.metadata_file,
             images_base_dir=config.images_base_dir,
-            max_workers=int(cpu_count() / 2),
+            max_workers=max(((cpu_count() or 1) // 2) - 2, 0),
             debug=True,
             output_dir="./out",
         )
@@ -46,5 +56,23 @@ def dataset_manifest(context: dg.AssetExecutionContext, config: DatasetManifestC
 
 
 @dg.asset
-def training_run():
-    pass
+def training_run(
+    context: dg.AssetExecutionContext,
+    dataset_manifest: DatasetManifestOutput,
+    config: TrainingRunConfig,
+) -> TrainingRunOutput:
+    ds_config = parsed_dataset_from_manifest(dataset_manifest.manifest)
+    run_id = start_train(
+        dataset_config=ds_config,
+        hyperparameters=Hyperparameters(
+            batch_size=config.batch_size,
+            epochs=config.epochs,
+            dropout=config.dropout,
+            learning_rate=config.learning_rate,
+            train_limit=config.train_limit,
+        ),
+        working_directory=config.working_directory,
+    )
+    return TrainingRunOutput(
+        mlflow_run_id=run_id, manifest_uri=dataset_manifest.manifest_uri
+    )

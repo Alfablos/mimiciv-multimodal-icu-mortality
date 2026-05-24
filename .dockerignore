@@ -7,3 +7,4 @@ trainer/**/__pycache__/
 trainer/**/*.py[co]
 Dockerfile
 !entrypoint.sh
+.tmp_dagster*/

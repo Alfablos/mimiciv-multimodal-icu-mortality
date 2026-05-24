@@ -14,5 +14,5 @@ class DatasetManifestOutput(BaseModel):
 
 class TrainingRunOutput(BaseModel):
     mlflow_run_id: str
-    model_uri: str
+    # model_uri: str
     manifest_uri: str

@@ -13,3 +13,8 @@ class DatasetManifestConfig(dg.Config):
 
 class TrainingRunConfig(dg.Config):
     working_directory: str = "./out"
+    batch_size: int = 32
+    epochs: int = 1
+    dropout: float = 0.3
+    learning_rate: float = 1e-4
+    train_limit: float = 1.0

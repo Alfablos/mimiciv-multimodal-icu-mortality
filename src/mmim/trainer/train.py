@@ -29,7 +29,7 @@ import mlflow.pytorch
 from .data import MIMICReduced
 from .gradcam import grad_cam
 from .models.fusion import Fusion
-from .config import dataset_shuffle, num_workers, hyperparameters, debug
+from .config import dataset_shuffle, num_workers, debug, Hyperparameters
 from .meta import log_metadata
 from .config import model_selection_metric
 
@@ -256,14 +256,20 @@ def train_cli(args: Namespace):
     ds_config = parsed_dataset_from_manifest(manifest)
 
     return start_train(
-        dataset_config=ds_config, working_directory=args.working_directory
+        dataset_config=ds_config,
+        hyperparameters=Hyperparameters(),
+        working_directory=args.working_directory,
     )
 
 
-def start_train(dataset_config: ParsedDataset, working_directory: str = "./out"):
-    if hyperparameters["train_limit"] != 1.0:
+def start_train(
+    dataset_config: ParsedDataset,
+    hyperparameters: Hyperparameters,
+    working_directory: str = "./out",
+):
+    if hyperparameters.train_limit != 1.0:
         print(
-            f"WARNING: train_limit is set to {hyperparameters['train_limit']}, make sure loss_pos_weight is still valid."
+            f"WARNING: train_limit is set to {hyperparameters.train_limit}, make sure loss_pos_weight is still valid."
         )
 
     working_directory = (
@@ -280,16 +286,16 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
 
     with mlflow.start_run(
         run_name="fusion_bs"
-        + str(hyperparameters["batch_size"])
+        + str(hyperparameters.batch_size)
         + "_lr"
-        + str(hyperparameters["learning_rate"])
+        + str(hyperparameters.learning_rate)
         + "_epochs"
-        + str(hyperparameters["epochs"])
+        + str(hyperparameters.epochs)
         + "_dropout"
-        + str(hyperparameters["dropout"])
+        + str(hyperparameters.dropout)
         + (
-            "_trainlimit" + str(hyperparameters["train_limit"])
-            if hyperparameters["train_limit"] != 1.0
+            "_trainlimit" + str(hyperparameters.train_limit)
+            if hyperparameters.train_limit != 1.0
             else ""
         )
     ) as r:
@@ -300,24 +306,24 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
         for k, v in metadata.items():
             print(f"{k} => {v}")
         mlflow.log_params(
-            {f"hyperparameters.{k}": v for k, v in hyperparameters.items()}
+            {f"hyperparameters.{k}": v for k, v in hyperparameters.summary().items()}
         )
         mlflow.set_tag("mlflow.run_id", run_id)  # for easy retrieval later
 
-        model = Fusion(dropout=hyperparameters["dropout"])
+        model = Fusion(dropout=hyperparameters.dropout)
 
         train_ds = MIMICReduced(
             df=dataset_config.train_ds,
             dataset_config=dataset_config,
             data_dir=working_directory,
             debug=debug,
-            limit=hyperparameters["train_limit"],
+            limit=hyperparameters.train_limit,
         )
         train_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=train_ds,
             shuffle=dataset_shuffle,
-            batch_size=hyperparameters["batch_size"],
+            batch_size=hyperparameters.batch_size,
             num_workers=num_workers,
         )
 
@@ -326,13 +332,13 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
             dataset_config=dataset_config,
             data_dir=working_directory,
             debug=debug,
-            limit=hyperparameters["train_limit"],
+            limit=hyperparameters.train_limit,
         )
         val_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=val_ds,
             shuffle=False,  # making val_ds more deterministic
-            batch_size=hyperparameters["batch_size"],
+            batch_size=hyperparameters.batch_size,
             num_workers=num_workers,
         )
 
@@ -344,13 +350,13 @@ def start_train(dataset_config: ParsedDataset, working_directory: str = "./out")
             )  # so pytorch is free to broadcast it
         )
 
-        optimizer = AdamW(model.parameters(), lr=hyperparameters["learning_rate"])
+        optimizer = AdamW(model.parameters(), lr=hyperparameters.learning_rate)
 
         train(
             model=model,
             loss_fn=loss_fn,
             optimizer=optimizer,
-            epochs=hyperparameters["epochs"],
+            epochs=hyperparameters.epochs,
             train_loader=train_dl,
             val_loader=val_dl,
         )
