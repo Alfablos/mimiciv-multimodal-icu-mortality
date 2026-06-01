@@ -5,6 +5,7 @@ from mmim.trainer.dataset_utils import (
     parsed_dataset_from_manifest,
 )
 from typing import Literal
+from pydantic import BaseModel
 
 import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
@@ -34,6 +35,23 @@ from .meta import log_metadata
 from .config import model_selection_metric
 
 
+class Metrics(BaseModel):
+    AUROC: float
+    AUPRC: float
+    sens_at_95_spec: float
+
+
+# import-time validation since the value of model_selection_metric is already known at that point
+# pydantic would only validate it on first instatiation
+VALID_MODEL_SELECTION_METRICS = set(Metrics.model_fields)
+
+if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
+    raise ValueError(
+        f"Invalid model_selection_metric={model_selection_metric}. "
+        f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
+    )
+
+
 def is_better_score(
     current: float, best: float | None, mode: Literal["lower", "higher"]
 ):
@@ -46,13 +64,13 @@ def is_better_score(
     return current < best
 
 
-def log_model(model: Fusion, epoch: int, metrics: dict[str, float]):
+def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
     mlflow.pytorch.log_model(model, name="multimodal_icu_mortality")
     mlflow.log_metric("best_epoch", epoch)
-    mlflow.log_metric("best_val_loss", metrics["val_loss"])
-    mlflow.log_metric("best_val_auroc", metrics["AUROC"])
-    mlflow.log_metric("best_val_auprc", metrics["AUPRC"])
-    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics["sens_at_95_spec"])
+    mlflow.log_metric("best_val_loss", val_loss)
+    mlflow.log_metric("best_val_auroc", metrics.AUROC)
+    mlflow.log_metric("best_val_auprc", metrics.AUPRC)
+    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics.sens_at_95_spec)
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
     mlflow.set_tag("best_model.selection_metric", model_selection_metric)
@@ -101,6 +119,7 @@ def train(
     loss_fn = loss_fn.to(device)
 
     best_metric: float | None = None
+    best_metrics: Metrics | None = None  # noqa: F841
 
     try:
         for epoch in range(epochs):
@@ -147,7 +166,7 @@ def train(
 
             # Only doing this on the validation set, the primary overfitting indicator
             # is the raw loss.
-            metrics = evaluate(
+            metrics, val_loss = evaluate(
                 model=model,
                 val_loader=val_loader,
                 device=device,
@@ -155,10 +174,11 @@ def train(
                 epoch_n=epoch,
             )
 
-            current_score = float(metrics[model_selection_metric])
+            current_score = float(getattr(metrics, model_selection_metric))
             if is_better_score(current_score, best_metric, mode="higher"):
                 best_metric = current_score
-                log_model(model=model, epoch=epoch, metrics=metrics)
+                best_metrics = metrics  # noqa: F841
+                log_model(model=model, epoch=epoch, metrics=metrics, val_loss=val_loss)
 
         mlflow.set_tag("training.status", "completed")
         print("Training done.")
@@ -175,7 +195,7 @@ def evaluate(
     device: Literal["cuda", "cpu"],
     loss_fn: nn.Module,
     epoch_n: int,
-) -> dict[str, float]:
+) -> tuple[Metrics, float]:
     model.eval()
     with torch.no_grad():
         preds = []
@@ -213,26 +233,25 @@ def evaluate(
         mlflow.log_metric("val_loss", val_mean_loss, step=epoch_n)
 
         metrics = get_metrics(preds, labels)
-        metrics["val_loss"] = val_mean_loss
-        auroc = metrics["AUROC"]
-        auprc = metrics["AUPRC"]
-        sens_at_95_spec = metrics["sens_at_95_spec"]
-        mlflow.log_metric("val_auroc", auroc, step=epoch_n)
-        mlflow.log_metric("val_auprc", auprc, step=epoch_n)
-        mlflow.log_metric("val_sens_at_95_spec", sens_at_95_spec, step=epoch_n)
+        val_auroc: float = metrics.AUROC
+        val_auprc: float = metrics.AUPRC
+        val_sens_at_95_spec: float = metrics.sens_at_95_spec
+        mlflow.log_metric("val_auroc", val_auroc, step=epoch_n)
+        mlflow.log_metric("val_auprc", val_auprc, step=epoch_n)
+        mlflow.log_metric("val_sens_at_95_spec", val_sens_at_95_spec, step=epoch_n)
         print(
             f"Epoch {epoch_n} (VAL):\n"
-            f"AUROC: {metrics['AUROC']}\n"
-            f"AUPRC: {metrics['AUPRC']}\n"
-            f"Sensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n"
+            f"AUROC: {val_auroc}\n"
+            f"AUPRC: {val_auprc}\n"
+            f"Sensitivity at 95% specificity: {val_sens_at_95_spec}\n"
         )
     upload_gradcam(
         images=val_images, tabs=val_tabs, model=model, epoch_n=epoch_n, purpose="val"
     )
-    return metrics
+    return metrics, val_mean_loss
 
 
-def get_metrics(preds, labels) -> dict[str, float]:
+def get_metrics(preds, labels) -> Metrics:
     auroc = float(roc_auc_score(y_true=labels, y_score=preds))
     auprc = float(average_precision_score(y_true=labels, y_score=preds))
     false_positive_rate, true_positive_rate, thresholds = roc_curve(
@@ -244,11 +263,11 @@ def get_metrics(preds, labels) -> dict[str, float]:
     sensitivity_at_95_perc_spec = (
         true_positive_rate[under_005_indices[-1]] if len(under_005_indices) > 0 else 0.0
     )
-    return {
-        "AUROC": auroc,
-        "AUPRC": auprc,
-        "sens_at_95_spec": sensitivity_at_95_perc_spec,
-    }
+    return Metrics(
+        AUROC=auroc,
+        AUPRC=auprc,
+        sens_at_95_spec=sensitivity_at_95_perc_spec,
+    )
 
 
 def train_cli(args: Namespace):
