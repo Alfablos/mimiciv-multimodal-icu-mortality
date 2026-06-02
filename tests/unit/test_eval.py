@@ -6,12 +6,8 @@ def test_metrics_computed_correctly():
     labels = [1, 1, 0, 0]
     m = get_metrics(preds, labels)
 
-    assert m["AUROC"] == 1.0, (
-        "Failure in computing correct AUROC from preds and labels."
-    )
-    assert m["AUPRC"] == 1.0, (
-        "Failure in computing correct AUPRC from preds and labels."
-    )
-    assert m["sens_at_95_spec"] == 1.0, (
+    assert m.AUROC == 1.0, "Failure in computing correct AUROC from preds and labels."
+    assert m.AUPRC == 1.0, "Failure in computing correct AUPRC from preds and labels."
+    assert m.sens_at_95_spec == 1.0, (
         "Failure in computing correct sensibility at specificity 95% from preds and labels."
     )
