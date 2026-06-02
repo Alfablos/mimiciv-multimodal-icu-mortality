@@ -59,6 +59,8 @@ type TrainStatus = Literal["completed", "interrupted", "failed"]
 
 
 class TrainLoopResult(BaseModel):
+    start_time: str
+    end_time: str
     best_epoch: int | None
     best_metrics: Metrics | None
     best_val_loss: float | None
@@ -84,8 +86,10 @@ def is_better_score(
     return current < best
 
 
-def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
-    artifact_path = f"multimodal_icu_mortality@epoch_{epoch}"
+def log_model(
+    model: Fusion, epoch: int, metrics: Metrics, val_loss: float, train_start_time: str
+):
+    artifact_path = f"multimodal_icu_mortality@{train_start_time}_e{epoch}"
     model_info: mlflow.models.model.ModelInfo = mlflow.pytorch.log_model(
         model, name=artifact_path
     )
@@ -98,6 +102,7 @@ def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
     mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics.sens_at_95_spec)
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
+    mlflow.set_tag("best_model.time", datetime.now(UTC).strftime("%Y%m%d_%H%M"))
     mlflow.set_tag("best_model.selection_metric", model_selection_metric)
     mlflow.set_tag("best_model.model_uri", model_uri)
 
@@ -152,6 +157,7 @@ def train(
     best_model_uri: str | None = None
     best_val_loss: float | None = None
 
+    start_time_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     try:
         for epoch in range(epochs):
             model.train()
@@ -212,30 +218,32 @@ def train(
                 best_epoch = epoch
                 best_val_loss = val_loss
                 best_model_uri = log_model(
-                    model=model, epoch=epoch, metrics=metrics, val_loss=val_loss
+                    model=model,
+                    epoch=epoch,
+                    metrics=metrics,
+                    val_loss=val_loss,
+                    train_start_time=start_time_str,
                 )
-
+        train_status = "completed"
     except KeyboardInterrupt:
         print("User interrupted the training job.")
         mlflow.set_tag("training.status", "interrupted")
         print("Exiting.")
-        return TrainLoopResult(
-            best_epoch=best_epoch,
-            best_metrics=best_metrics,
-            best_val_loss=best_val_loss,
-            best_model_uri=best_model_uri,
-            train_status="interrupted",
-        )
+        train_status = "interrupted"
 
     mlflow.set_tag("training.status", "completed")
     print("Training done.")
 
+    end_time_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
+
     return TrainLoopResult(
+        start_time=start_time_str,
+        end_time=end_time_str,
         best_epoch=best_epoch,
         best_metrics=best_metrics,
         best_val_loss=best_val_loss,
         best_model_uri=best_model_uri,
-        train_status="completed",
+        train_status=train_status,
     )
 
 
@@ -391,8 +399,6 @@ def start_train(
         )
         mlflow.set_tag("mlflow.run_id", run_id)  # for easy retrieval later
 
-        model = Fusion(dropout=hyperparameters.dropout)
-
         train_ds = MIMICReduced(
             df=dataset_config.train_ds,
             dataset_config=dataset_config,
@@ -416,6 +422,16 @@ def start_train(
             debug=debug,
             limit=hyperparameters.train_limit,
         )
+
+        if train_ds.features != val_ds.features:
+            raise ValueError(
+                f"Train dataset features differ from validation dataset.\nTrain: {','.join(train_ds.features)}\nValidation: {','.join(val_ds.features)}"
+            )
+
+        model = Fusion(
+            dropout=hyperparameters.dropout, tab_features_in=len(train_ds.features)
+        )
+
         val_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=val_ds,
@@ -443,8 +459,12 @@ def start_train(
             val_loader=val_dl,
         )
 
-        return TrainingResult(
+        training_result = TrainingResult(
             dataset_manifest=dataset_config.manifest,
             run_id=run_id,
             train_results=train_loop_result,
         )
+
+        print(training_result.model_dump_json())
+
+        return training_result
