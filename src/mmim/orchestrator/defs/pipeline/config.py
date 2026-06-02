@@ -1,5 +1,12 @@
-from mmim.trainer.train import Metrics
+from mmim.trainer.train import VALID_MODEL_SELECTION_METRICS
+from mmim.trainer.config import model_selection_metric
 import dagster as dg
+
+if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
+    raise ValueError(
+        f"Invalid model_selection_metric={model_selection_metric}. "
+        f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
+    )
 
 
 class DatasetManifestConfig(dg.Config):
@@ -22,4 +29,9 @@ class TrainingRunConfig(dg.Config):
 
 
 class QualityGateConfig(dg.Config):
-    metrics: Metrics = Metrics(AUROC=0.7, AUPRC=0.5, sens_at_95_spec=0.7)
+    model_selection_metric: str = model_selection_metric
+    AUROC: float = 0.7
+    AUPRC: float = 0.5
+    sens_at_95_spec: float = 0.7
+    # Whether to pretend there's an improvement regardless of the improvement being present
+    fake_pass: bool = False

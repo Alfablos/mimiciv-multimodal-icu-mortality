@@ -5,12 +5,8 @@ import dagster as dg
 
 from mmim.generator.builder import build
 from mmim.trainer.dataset_utils import manifest_from_uri, parsed_dataset_from_manifest
-from mmim.trainer.train import (
-    start_train,
-    TrainingResult,
-    VALID_MODEL_SELECTION_METRICS,
-)
-from mmim.trainer.config import Hyperparameters, model_selection_metric
+from mmim.trainer.train import start_train, TrainingResult
+from mmim.trainer.config import Hyperparameters
 
 
 from mmim.orchestrator.defs.pipeline.config import (
@@ -18,12 +14,6 @@ from mmim.orchestrator.defs.pipeline.config import (
     TrainingRunConfig,
     QualityGateConfig,
 )
-
-if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
-    raise ValueError(
-        f"Invalid model_selection_metric={model_selection_metric}. "
-        f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
-    )
 
 
 @dg.asset
@@ -84,11 +74,11 @@ def training_run(
     return training_result
 
 
+@dg.asset
 def quality_gate(
+    context: dg.AssetExecutionContext,
     training_run: TrainingResult,
     config: QualityGateConfig,
-    fake_pass: bool = False,
-    model_selection_metric: str = model_selection_metric,
 ):
     training_status = training_run.train_results.train_status
     if training_status not in ["completed", "interrupted"]:
@@ -109,13 +99,19 @@ def quality_gate(
         "If training is completed or interrupted the field `best_metrics.sens_at_95_spec` cannot be None. This is a bug!"
     )
 
-    if fake_pass:
-        val = getattr(config.metrics, model_selection_metric)
+    context.log.info(
+        f"[PRE-REGISTRATION] best_model_uri={training_run.train_results.best_model_uri}"
+    )
+
+    if config.fake_pass:
+        val = getattr(config, config.model_selection_metric)
         val += 0.01  # always pass the gate
     else:
-        val = getattr(training_run.train_results.best_metrics, model_selection_metric)
+        val = getattr(
+            training_run.train_results.best_metrics, config.model_selection_metric
+        )
 
-    if val >= getattr(config.metrics, model_selection_metric):
+    if val >= getattr(config, config.model_selection_metric):
         # gate passed
         pass
     else:
