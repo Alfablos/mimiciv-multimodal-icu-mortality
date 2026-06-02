@@ -40,10 +40,10 @@ model_selection_metric = os.getenv("MMIM_TRAINER_MODEL_SELECTION_METRIC", "AUROC
 
 class Hyperparameters(BaseModel):
     batch_size: int = int_from_env("MMIM_TRAINER_BATCH_SIZE", 32)
-    epochs: int = int_from_env("MMIM_TRAINER_EPOCHS", 1)
+    epochs: int = int_from_env("MMIM_TRAINER_EPOCHS", 10)
     dropout: float = float_from_env("MMIM_TRAINER_DROPOUT", 0.3)
     learning_rate: float = float_from_env("MMIM_TRAINER_LEARNING_RATE", 10e-4)
-    train_limit: float = float_from_env("MMIM_TRAINER_TRAIN_LIMIT", 0.2)
+    train_limit: float = float_from_env("MMIM_TRAINER_TRAIN_LIMIT", 1.0)
 
     def summary(self) -> dict[str, int | float]:
         return {
