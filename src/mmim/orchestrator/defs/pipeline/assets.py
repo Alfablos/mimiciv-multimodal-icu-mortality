@@ -1,14 +1,11 @@
 from multiprocessing import cpu_count
-from mmim.orchestrator.defs.pipeline.model import (
-    DatasetManifestOutput,
-    TrainingRunOutput,
-)
+from mmim.orchestrator.defs.pipeline.model import DatasetManifestOutput
 import dagster as dg
 
 
 from mmim.generator.builder import build
 from mmim.trainer.dataset_utils import manifest_from_uri, parsed_dataset_from_manifest
-from mmim.trainer.train import start_train
+from mmim.trainer.train import start_train, TrainingResult
 from mmim.trainer.config import Hyperparameters
 
 
@@ -60,9 +57,9 @@ def training_run(
     context: dg.AssetExecutionContext,
     dataset_manifest: DatasetManifestOutput,
     config: TrainingRunConfig,
-) -> TrainingRunOutput:
+) -> TrainingResult:
     ds_config = parsed_dataset_from_manifest(dataset_manifest.manifest)
-    run_id = start_train(
+    training_result = start_train(
         dataset_config=ds_config,
         hyperparameters=Hyperparameters(
             batch_size=config.batch_size,
@@ -73,6 +70,4 @@ def training_run(
         ),
         working_directory=config.working_directory,
     )
-    return TrainingRunOutput(
-        mlflow_run_id=run_id, manifest_uri=dataset_manifest.manifest_uri
-    )
+    return training_result

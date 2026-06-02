@@ -1,3 +1,4 @@
+from mmim.generator.manifest import ManifestV1
 from mmim.store.filesystem import FilesystemReadOnlyStore
 from mmim.trainer.dataset_utils import (
     ParsedDataset,
@@ -66,6 +67,7 @@ class TrainLoopResult(BaseModel):
 
 
 class TrainingResult(BaseModel):
+    dataset_manifest: ManifestV1
     train_results: TrainLoopResult
     run_id: str
 
@@ -441,4 +443,8 @@ def start_train(
             val_loader=val_dl,
         )
 
-        return TrainingResult(run_id=run_id, train_results=train_loop_result)
+        return TrainingResult(
+            dataset_manifest=dataset_config.manifest,
+            run_id=run_id,
+            train_results=train_loop_result,
+        )

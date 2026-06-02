@@ -10,9 +10,3 @@ class DatasetManifestOutput(BaseModel):
     manifest_uri: str
     output_dir: str | None = None
     lakefs_ref: str | None = None
-
-
-class TrainingRunOutput(BaseModel):
-    mlflow_run_id: str
-    # model_uri: str
-    manifest_uri: str
