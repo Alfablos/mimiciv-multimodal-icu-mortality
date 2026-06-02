@@ -1,3 +1,4 @@
+from mmim.trainer.train import Metrics
 import dagster as dg
 
 
@@ -18,3 +19,7 @@ class TrainingRunConfig(dg.Config):
     dropout: float = 0.3
     learning_rate: float = 1e-4
     train_limit: float = 1.0
+
+
+class QualityGateConfig(dg.Config):
+    metrics: Metrics = Metrics(AUROC=0.7, AUPRC=0.5, sens_at_95_spec=0.7)

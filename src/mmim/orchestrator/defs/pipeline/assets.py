@@ -5,14 +5,25 @@ import dagster as dg
 
 from mmim.generator.builder import build
 from mmim.trainer.dataset_utils import manifest_from_uri, parsed_dataset_from_manifest
-from mmim.trainer.train import start_train, TrainingResult
-from mmim.trainer.config import Hyperparameters
+from mmim.trainer.train import (
+    start_train,
+    TrainingResult,
+    VALID_MODEL_SELECTION_METRICS,
+)
+from mmim.trainer.config import Hyperparameters, model_selection_metric
 
 
 from mmim.orchestrator.defs.pipeline.config import (
     DatasetManifestConfig,
     TrainingRunConfig,
+    QualityGateConfig,
 )
+
+if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
+    raise ValueError(
+        f"Invalid model_selection_metric={model_selection_metric}. "
+        f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
+    )
 
 
 @dg.asset
@@ -71,3 +82,41 @@ def training_run(
         working_directory=config.working_directory,
     )
     return training_result
+
+
+def quality_gate(
+    training_run: TrainingResult,
+    config: QualityGateConfig,
+    fake_pass: bool = False,
+    model_selection_metric: str = model_selection_metric,
+):
+    training_status = training_run.train_results.train_status
+    if training_status not in ["completed", "interrupted"]:
+        raise ValueError(
+            f"Cannot proceed to model evaluation because train status is {training_status}"
+        )
+
+    assert training_run.train_results.best_metrics is not None, (
+        "If training is completed or interrupted the field `best_metrics` cannot be None. This is a bug!"
+    )
+    assert training_run.train_results.best_metrics.AUROC is not None, (
+        "If training is completed or interrupted the field `best_metrics.AUROC` cannot be None. This is a bug!"
+    )
+    assert training_run.train_results.best_metrics.AUPRC is not None, (
+        "If training is completed or interrupted the field `best_metrics.AUPRC` cannot be None. This is a bug!"
+    )
+    assert training_run.train_results.best_metrics.sens_at_95_spec is not None, (
+        "If training is completed or interrupted the field `best_metrics.sens_at_95_spec` cannot be None. This is a bug!"
+    )
+
+    if fake_pass:
+        val = getattr(config.metrics, model_selection_metric)
+        val += 0.01  # always pass the gate
+    else:
+        val = getattr(training_run.train_results.best_metrics, model_selection_metric)
+
+    if val >= getattr(config.metrics, model_selection_metric):
+        # gate passed
+        pass
+    else:
+        pass
