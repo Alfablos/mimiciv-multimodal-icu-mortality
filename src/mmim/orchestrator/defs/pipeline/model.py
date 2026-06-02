@@ -7,6 +7,6 @@ from mmim.generator.manifest import ManifestV1
 class DatasetManifestOutput(BaseModel):
     source: Literal["generated", "existing"]
     manifest: ManifestV1
-    manifest_uri: str
+    manifest_uri: str | None
     output_dir: str | None = None
     lakefs_ref: str | None = None
