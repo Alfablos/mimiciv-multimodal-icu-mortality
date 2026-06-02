@@ -103,16 +103,19 @@ def quality_gate(
         f"[PRE-REGISTRATION] best_model_uri={training_run.train_results.best_model_uri}"
     )
 
-    if config.fake_pass:
-        val = getattr(config, config.model_selection_metric)
-        val += 0.01  # always pass the gate
-    else:
-        val = getattr(
-            training_run.train_results.best_metrics, config.model_selection_metric
-        )
+    threshold = float(getattr(config, config.model_selection_metric))
+    current = float(
+        getattr(training_run.train_results.best_metrics, config.model_selection_metric)
+    )
 
-    if val >= getattr(config, config.model_selection_metric):
-        # gate passed
+    val = threshold + 0.001 if config.fake_pass else current
+
+    if val >= threshold:
+        # quality gate passed: now let's if the model is better than any other.
+
+        # 1. search for similar models in the current experiment, sort them by model_selection_metric
+        # 2. IF the current score is better than the above register it, else do nothing
         pass
     else:
+        # Do nothing, the model is no better than the ones we already have
         pass
