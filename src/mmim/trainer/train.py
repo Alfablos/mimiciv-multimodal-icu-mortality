@@ -5,6 +5,9 @@ from mmim.trainer.dataset_utils import (
     parsed_dataset_from_manifest,
 )
 from typing import Literal
+from pydantic import BaseModel
+from datetime import datetime, UTC
+from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
@@ -34,6 +37,39 @@ from .meta import log_metadata
 from .config import model_selection_metric
 
 
+class Metrics(BaseModel):
+    AUROC: float
+    AUPRC: float
+    sens_at_95_spec: float
+
+
+# import-time validation since the value of model_selection_metric is already known at that point
+# pydantic would only validate it on first instatiation
+VALID_MODEL_SELECTION_METRICS = set(Metrics.model_fields)
+
+if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
+    raise ValueError(
+        f"Invalid model_selection_metric={model_selection_metric}. "
+        f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
+    )
+
+# completed: completed, interrupted: user interrupt, failed: handled fatal exceptions
+type TrainStatus = Literal["completed", "interrupted", "failed"]
+
+
+class TrainLoopResult(BaseModel):
+    best_epoch: int | None
+    best_metrics: Metrics | None
+    best_val_loss: float | None
+    best_model_uri: str | None
+    train_status: TrainStatus
+
+
+class TrainingResult(BaseModel):
+    train_results: TrainLoopResult
+    run_id: str
+
+
 def is_better_score(
     current: float, best: float | None, mode: Literal["lower", "higher"]
 ):
@@ -46,16 +82,24 @@ def is_better_score(
     return current < best
 
 
-def log_model(model: Fusion, epoch: int, metrics: dict[str, float]):
-    mlflow.pytorch.log_model(model, name="multimodal_icu_mortality")
+def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
+    artifact_path = f"multimodal_icu_mortality@epoch_{epoch}"
+    model_info: mlflow.models.model.ModelInfo = mlflow.pytorch.log_model(
+        model, name=artifact_path
+    )
+
+    model_uri = model_info.model_uri
     mlflow.log_metric("best_epoch", epoch)
-    mlflow.log_metric("best_val_loss", metrics["val_loss"])
-    mlflow.log_metric("best_val_auroc", metrics["AUROC"])
-    mlflow.log_metric("best_val_auprc", metrics["AUPRC"])
-    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics["sens_at_95_spec"])
+    mlflow.log_metric("best_val_loss", val_loss)
+    mlflow.log_metric("best_val_auroc", metrics.AUROC)
+    mlflow.log_metric("best_val_auprc", metrics.AUPRC)
+    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics.sens_at_95_spec)
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
     mlflow.set_tag("best_model.selection_metric", model_selection_metric)
+    mlflow.set_tag("best_model.model_uri", model_uri)
+
+    return model_uri
 
 
 def upload_gradcam(
@@ -93,7 +137,7 @@ def train(
     epochs: int,
     train_loader: DataLoader,
     val_loader: DataLoader,
-):
+) -> TrainLoopResult:
     cuda = torch.cuda.is_available()
     device = "cuda" if cuda else "cpu"
 
@@ -101,6 +145,10 @@ def train(
     loss_fn = loss_fn.to(device)
 
     best_metric: float | None = None
+    best_metrics: Metrics | None = None
+    best_epoch: int = 0
+    best_model_uri: str | None = None
+    best_val_loss: float | None = None
 
     try:
         for epoch in range(epochs):
@@ -147,7 +195,7 @@ def train(
 
             # Only doing this on the validation set, the primary overfitting indicator
             # is the raw loss.
-            metrics = evaluate(
+            metrics, val_loss = evaluate(
                 model=model,
                 val_loader=val_loader,
                 device=device,
@@ -155,18 +203,38 @@ def train(
                 epoch_n=epoch,
             )
 
-            current_score = float(metrics[model_selection_metric])
+            current_score = float(getattr(metrics, model_selection_metric))
             if is_better_score(current_score, best_metric, mode="higher"):
                 best_metric = current_score
-                log_model(model=model, epoch=epoch, metrics=metrics)
-
-        mlflow.set_tag("training.status", "completed")
-        print("Training done.")
+                best_metrics = metrics
+                best_epoch = epoch
+                best_val_loss = val_loss
+                best_model_uri = log_model(
+                    model=model, epoch=epoch, metrics=metrics, val_loss=val_loss
+                )
 
     except KeyboardInterrupt:
         print("User interrupted the training job.")
         mlflow.set_tag("training.status", "interrupted")
         print("Exiting.")
+        return TrainLoopResult(
+            best_epoch=best_epoch,
+            best_metrics=best_metrics,
+            best_val_loss=best_val_loss,
+            best_model_uri=best_model_uri,
+            train_status="interrupted",
+        )
+
+    mlflow.set_tag("training.status", "completed")
+    print("Training done.")
+
+    return TrainLoopResult(
+        best_epoch=best_epoch,
+        best_metrics=best_metrics,
+        best_val_loss=best_val_loss,
+        best_model_uri=best_model_uri,
+        train_status="completed",
+    )
 
 
 def evaluate(
@@ -175,7 +243,7 @@ def evaluate(
     device: Literal["cuda", "cpu"],
     loss_fn: nn.Module,
     epoch_n: int,
-) -> dict[str, float]:
+) -> tuple[Metrics, float]:
     model.eval()
     with torch.no_grad():
         preds = []
@@ -213,26 +281,25 @@ def evaluate(
         mlflow.log_metric("val_loss", val_mean_loss, step=epoch_n)
 
         metrics = get_metrics(preds, labels)
-        metrics["val_loss"] = val_mean_loss
-        auroc = metrics["AUROC"]
-        auprc = metrics["AUPRC"]
-        sens_at_95_spec = metrics["sens_at_95_spec"]
-        mlflow.log_metric("val_auroc", auroc, step=epoch_n)
-        mlflow.log_metric("val_auprc", auprc, step=epoch_n)
-        mlflow.log_metric("val_sens_at_95_spec", sens_at_95_spec, step=epoch_n)
+        val_auroc: float = metrics.AUROC
+        val_auprc: float = metrics.AUPRC
+        val_sens_at_95_spec: float = metrics.sens_at_95_spec
+        mlflow.log_metric("val_auroc", val_auroc, step=epoch_n)
+        mlflow.log_metric("val_auprc", val_auprc, step=epoch_n)
+        mlflow.log_metric("val_sens_at_95_spec", val_sens_at_95_spec, step=epoch_n)
         print(
             f"Epoch {epoch_n} (VAL):\n"
-            f"AUROC: {metrics['AUROC']}\n"
-            f"AUPRC: {metrics['AUPRC']}\n"
-            f"Sensitivity at 95% specificity: {metrics['sens_at_95_spec']}\n"
+            f"AUROC: {val_auroc}\n"
+            f"AUPRC: {val_auprc}\n"
+            f"Sensitivity at 95% specificity: {val_sens_at_95_spec}\n"
         )
     upload_gradcam(
         images=val_images, tabs=val_tabs, model=model, epoch_n=epoch_n, purpose="val"
     )
-    return metrics
+    return metrics, val_mean_loss
 
 
-def get_metrics(preds, labels) -> dict[str, float]:
+def get_metrics(preds, labels) -> Metrics:
     auroc = float(roc_auc_score(y_true=labels, y_score=preds))
     auprc = float(average_precision_score(y_true=labels, y_score=preds))
     false_positive_rate, true_positive_rate, thresholds = roc_curve(
@@ -244,29 +311,31 @@ def get_metrics(preds, labels) -> dict[str, float]:
     sensitivity_at_95_perc_spec = (
         true_positive_rate[under_005_indices[-1]] if len(under_005_indices) > 0 else 0.0
     )
-    return {
-        "AUROC": auroc,
-        "AUPRC": auprc,
-        "sens_at_95_spec": sensitivity_at_95_perc_spec,
-    }
+    return Metrics(
+        AUROC=auroc,
+        AUPRC=auprc,
+        sens_at_95_spec=sensitivity_at_95_perc_spec,
+    )
 
 
 def train_cli(args: Namespace):
     manifest = manifest_from_uri(args.manifest_uri)
     ds_config = parsed_dataset_from_manifest(manifest)
 
-    return start_train(
+    train_result = start_train(
         dataset_config=ds_config,
         hyperparameters=Hyperparameters(),
         working_directory=args.working_directory,
     )
+
+    print(train_result)
 
 
 def start_train(
     dataset_config: ParsedDataset,
     hyperparameters: Hyperparameters,
     working_directory: str = "./out",
-):
+) -> TrainingResult:
     if hyperparameters.train_limit != 1.0:
         print(
             f"WARNING: train_limit is set to {hyperparameters.train_limit}, make sure loss_pos_weight is still valid."
@@ -278,11 +347,18 @@ def start_train(
         else working_directory
     )
 
-    mlflow.set_experiment(
-        os.getenv("MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality")
+    mlflow.set_tracking_uri(
+        os.getenv("MLFLOW_TRACKING_URI", "sqlite://" + str(Path.cwd() / "mlflow.db"))
     )
+    mlflow_experiment_name = os.getenv(
+        "MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality"
+    )
+    mlflow.set_experiment(mlflow_experiment_name)
     mlflow.config.disable_system_metrics_logging()
     # mlflow.config.set_system_metrics_sampling_interval(5)
+
+    if mlflow.get_experiment_by_name(mlflow_experiment_name) is None:
+        mlflow.create_experiment(name=mlflow_experiment_name)
 
     with mlflow.start_run(
         run_name="fusion_bs"
@@ -298,11 +374,14 @@ def start_train(
             if hyperparameters.train_limit != 1.0
             else ""
         )
+        + "@"
+        + datetime.now(UTC).strftime("%Y%m%d_%H%M")
     ) as r:
+        print(f"Tracking uri: {mlflow.get_tracking_uri()}")
         run_id = r.info.run_id
         mlflow.log_param("run_id", run_id)
 
-        metadata = log_metadata()
+        metadata = log_metadata(manifest=dataset_config.manifest)
         for k, v in metadata.items():
             print(f"{k} => {v}")
         mlflow.log_params(
@@ -319,6 +398,7 @@ def start_train(
             debug=debug,
             limit=hyperparameters.train_limit,
         )
+
         train_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=train_ds,
@@ -352,7 +432,7 @@ def start_train(
 
         optimizer = AdamW(model.parameters(), lr=hyperparameters.learning_rate)
 
-        train(
+        train_loop_result = train(
             model=model,
             loss_fn=loss_fn,
             optimizer=optimizer,
@@ -361,4 +441,4 @@ def start_train(
             val_loader=val_dl,
         )
 
-        return run_id
+        return TrainingResult(run_id=run_id, train_results=train_loop_result)

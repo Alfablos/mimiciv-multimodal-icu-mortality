@@ -1,3 +1,4 @@
+from mmim.generator.manifest import ManifestV1
 import torchvision
 import torch
 import os
@@ -25,7 +26,7 @@ def get_local_repo() -> Repo:
     return r
 
 
-def log_metadata(no_send=False):
+def log_metadata(manifest: ManifestV1, no_send=False):
     git_sha = os.getenv("GIT_SHA")
     git_ref = os.getenv("GIT_REF")
 
@@ -45,8 +46,8 @@ def log_metadata(no_send=False):
     #     dataset_stats_hash = sha256(f.read()).hexdigest()
 
     metadata = {
-        "source.git_sha": git_sha,
-        "source.git_ref": git_ref,
+        "trainer.git_sha": git_sha,
+        "trainer.git_ref": git_ref,
         # "dataset.train_filepath": train_csv,
         # "dataset.train_sha256": dataset_train_hash,
         # "dataset.validation_filepath": val_csv,
@@ -55,6 +56,13 @@ def log_metadata(no_send=False):
         # "dataset.images_extension": image_extension,
         # "dataset.loss_positive_weight": loss_pos_weight,
         # "dataset.images_base_dir": image_base_dir,
+        "dataset.name": manifest.dataset,
+        "dateset.version": manifest.dataset_version,
+        "dataset.defaults": manifest.defaults,
+        "dataset.generator.git_sha": manifest.generator_code.git_sha,
+        "dataset.generator.git_ref": manifest.generator_code.git_ref,
+        "dataset.tabular_data_spec": manifest.data.tabular,
+        "dataset.image_data_spec": manifest.data.images,
         "dataset.shuffle": dataset_shuffle,
         "environment.default_num_workers": default_num_workers,
         "environment.num_workers": num_workers,
@@ -63,10 +71,11 @@ def log_metadata(no_send=False):
         "environment.torch_version": torch.__version__,
         "environment.torchvision_version": torchvision.__version__,
         "environment.cuda_version": torch.version.cuda or "N/A",
-        "environment.gpu_name": torch.cuda.get_device_name(0)
-        if torch.cuda.is_available()
-        else "N/A",
     }
+
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            metadata[f"environment.gpu{i}_name"] = torch.cuda.get_device_name(device=i)
 
     if not no_send:
         mlflow.log_params(metadata)

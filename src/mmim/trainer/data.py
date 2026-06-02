@@ -116,7 +116,6 @@ class MIMICReduced(Dataset):
             image_resolver.resolve, axis=1
         )  # pass rows, not columns
 
-        print("Downloading missing images...")
         store = dataset_config.images_store
 
         for local_path in df["image_path"]:
@@ -132,9 +131,6 @@ class MIMICReduced(Dataset):
                 print(f"Writing to {l_path}")
                 with open(str(l_path), "wb") as f:
                     f.write(img_bytes)
-            else:
-                print(f"{l_path} already exists.")
-        print("Done.")
 
         self.image_paths = df["image_path"].values
 
