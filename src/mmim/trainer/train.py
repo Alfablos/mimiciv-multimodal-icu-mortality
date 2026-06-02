@@ -6,6 +6,8 @@ from mmim.trainer.dataset_utils import (
 )
 from typing import Literal
 from pydantic import BaseModel
+from datetime import datetime, UTC
+from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
@@ -51,6 +53,26 @@ if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
         f"Expected one of: {', '.join(sorted(VALID_MODEL_SELECTION_METRICS))}"
     )
 
+# completed: completed, interrupted: user interrupt, failed: handled fatal exceptions
+type TrainStatus = Literal["completed", "interrupted", "failed"]
+
+
+class TrainLoopResult(BaseModel):
+    best_epoch: int | None
+    best_metrics: Metrics | None
+    best_val_loss: float | None
+    best_model_uri: str | None
+    train_status: TrainStatus
+
+
+class TrainingResult(BaseModel):
+    run_id: str
+    best_model_uri: str | None
+    best_metrics: Metrics | None
+    best_val_loss: float | None
+    best_epoch: int | None
+    train_status: TrainStatus
+
 
 def is_better_score(
     current: float, best: float | None, mode: Literal["lower", "higher"]
@@ -65,7 +87,12 @@ def is_better_score(
 
 
 def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
-    mlflow.pytorch.log_model(model, name="multimodal_icu_mortality")
+    artifact_path = f"multimodal_icu_mortality@epoch_{epoch}"
+    model_info: mlflow.models.model.ModelInfo = mlflow.pytorch.log_model(
+        model, name=artifact_path
+    )
+
+    model_uri = model_info.model_uri
     mlflow.log_metric("best_epoch", epoch)
     mlflow.log_metric("best_val_loss", val_loss)
     mlflow.log_metric("best_val_auroc", metrics.AUROC)
@@ -74,6 +101,9 @@ def log_model(model: Fusion, epoch: int, metrics: Metrics, val_loss: float):
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
     mlflow.set_tag("best_model.selection_metric", model_selection_metric)
+    mlflow.set_tag("best_model.model_uri", model_uri)
+
+    return model_uri
 
 
 def upload_gradcam(
@@ -111,7 +141,7 @@ def train(
     epochs: int,
     train_loader: DataLoader,
     val_loader: DataLoader,
-):
+) -> TrainLoopResult:
     cuda = torch.cuda.is_available()
     device = "cuda" if cuda else "cpu"
 
@@ -119,7 +149,10 @@ def train(
     loss_fn = loss_fn.to(device)
 
     best_metric: float | None = None
-    best_metrics: Metrics | None = None  # noqa: F841
+    best_metrics: Metrics | None = None
+    best_epoch: int = 0
+    best_model_uri: str | None = None
+    best_val_loss: float | None = None
 
     try:
         for epoch in range(epochs):
@@ -177,16 +210,35 @@ def train(
             current_score = float(getattr(metrics, model_selection_metric))
             if is_better_score(current_score, best_metric, mode="higher"):
                 best_metric = current_score
-                best_metrics = metrics  # noqa: F841
-                log_model(model=model, epoch=epoch, metrics=metrics, val_loss=val_loss)
-
-        mlflow.set_tag("training.status", "completed")
-        print("Training done.")
+                best_metrics = metrics
+                best_epoch = epoch
+                best_val_loss = val_loss
+                best_model_uri = log_model(
+                    model=model, epoch=epoch, metrics=metrics, val_loss=val_loss
+                )
 
     except KeyboardInterrupt:
         print("User interrupted the training job.")
         mlflow.set_tag("training.status", "interrupted")
         print("Exiting.")
+        return TrainLoopResult(
+            best_epoch=best_epoch,
+            best_metrics=best_metrics,
+            best_val_loss=best_val_loss,
+            best_model_uri=best_model_uri,
+            train_status="interrupted",
+        )
+
+    mlflow.set_tag("training.status", "completed")
+    print("Training done.")
+
+    return TrainLoopResult(
+        best_epoch=best_epoch,
+        best_metrics=best_metrics,
+        best_val_loss=best_val_loss,
+        best_model_uri=best_model_uri,
+        train_status="completed",
+    )
 
 
 def evaluate(
@@ -274,18 +326,20 @@ def train_cli(args: Namespace):
     manifest = manifest_from_uri(args.manifest_uri)
     ds_config = parsed_dataset_from_manifest(manifest)
 
-    return start_train(
+    train_result = start_train(
         dataset_config=ds_config,
         hyperparameters=Hyperparameters(),
         working_directory=args.working_directory,
     )
+
+    print(train_result)
 
 
 def start_train(
     dataset_config: ParsedDataset,
     hyperparameters: Hyperparameters,
     working_directory: str = "./out",
-):
+) -> TrainingResult:
     if hyperparameters.train_limit != 1.0:
         print(
             f"WARNING: train_limit is set to {hyperparameters.train_limit}, make sure loss_pos_weight is still valid."
@@ -297,11 +351,18 @@ def start_train(
         else working_directory
     )
 
-    mlflow.set_experiment(
-        os.getenv("MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality")
+    mlflow.set_tracking_uri(
+        os.getenv("MLFLOW_TRACKING_URI", "sqlite://" + str(Path.cwd() / "mlflow.db"))
     )
+    mlflow_experiment_name = os.getenv(
+        "MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality"
+    )
+    mlflow.set_experiment(mlflow_experiment_name)
     mlflow.config.disable_system_metrics_logging()
     # mlflow.config.set_system_metrics_sampling_interval(5)
+
+    if mlflow.get_experiment_by_name(mlflow_experiment_name) is None:
+        mlflow.create_experiment(name=mlflow_experiment_name)
 
     with mlflow.start_run(
         run_name="fusion_bs"
@@ -317,11 +378,14 @@ def start_train(
             if hyperparameters.train_limit != 1.0
             else ""
         )
+        + "@"
+        + datetime.now(UTC).strftime("%Y%m%d_%H%M")
     ) as r:
+        print(f"Tracking uri: {mlflow.get_tracking_uri()}")
         run_id = r.info.run_id
         mlflow.log_param("run_id", run_id)
 
-        metadata = log_metadata()
+        metadata = log_metadata(manifest=dataset_config.manifest)
         for k, v in metadata.items():
             print(f"{k} => {v}")
         mlflow.log_params(
@@ -338,6 +402,7 @@ def start_train(
             debug=debug,
             limit=hyperparameters.train_limit,
         )
+
         train_dl = DataLoader(
             pin_memory=torch.cuda.is_available(),
             dataset=train_ds,
@@ -371,7 +436,7 @@ def start_train(
 
         optimizer = AdamW(model.parameters(), lr=hyperparameters.learning_rate)
 
-        train(
+        train_loop_result = train(
             model=model,
             loss_fn=loss_fn,
             optimizer=optimizer,
@@ -380,4 +445,11 @@ def start_train(
             val_loader=val_dl,
         )
 
-        return run_id
+        return TrainingResult(
+            run_id=run_id,
+            best_epoch=train_loop_result.best_epoch,
+            best_metrics=train_loop_result.best_metrics,
+            best_model_uri=train_loop_result.best_model_uri,
+            best_val_loss=train_loop_result.best_val_loss,
+            train_status=train_loop_result.train_status,
+        )
