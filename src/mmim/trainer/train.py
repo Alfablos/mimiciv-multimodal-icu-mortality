@@ -66,12 +66,8 @@ class TrainLoopResult(BaseModel):
 
 
 class TrainingResult(BaseModel):
+    train_results: TrainLoopResult
     run_id: str
-    best_model_uri: str | None
-    best_metrics: Metrics | None
-    best_val_loss: float | None
-    best_epoch: int | None
-    train_status: TrainStatus
 
 
 def is_better_score(
@@ -445,11 +441,4 @@ def start_train(
             val_loader=val_dl,
         )
 
-        return TrainingResult(
-            run_id=run_id,
-            best_epoch=train_loop_result.best_epoch,
-            best_metrics=train_loop_result.best_metrics,
-            best_model_uri=train_loop_result.best_model_uri,
-            best_val_loss=train_loop_result.best_val_loss,
-            train_status=train_loop_result.train_status,
-        )
+        return TrainingResult(run_id=run_id, train_results=train_loop_result)
