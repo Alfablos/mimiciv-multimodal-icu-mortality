@@ -1,6 +1,8 @@
 from os import cpu_count
 import os
 
+from pydantic import BaseModel
+
 from .utils import int_from_env, float_from_env, bool_from_env
 
 # Available environment variables:
@@ -35,10 +37,19 @@ num_workers = int_from_env("MMIM_TRAINER_NUM_WORKERS", default_num_workers)
 working_directory = os.getenv("MMIM_TRAINER_WORKING_DIRECTORY", "./")
 model_selection_metric = os.getenv("MMIM_TRAINER_MODEL_SELECTION_METRIC", "AUROC")
 
-hyperparameters = {
-    "batch_size": int_from_env("MMIM_TRAINER_BATCH_SIZE", 32),
-    "epochs": int_from_env("MMIM_TRAINER_EPOCHS", 10),
-    "dropout": float_from_env("MMIM_TRAINER_DROPOUT", 0.3),
-    "learning_rate": float_from_env("MMIM_TRAINER_LEARNING_RATE", 10e-4),
-    "train_limit": float_from_env("MMIM_TRAINER_TRAIN_LIMIT", 1.0),
-}
+
+class Hyperparameters(BaseModel):
+    batch_size: int = int_from_env("MMIM_TRAINER_BATCH_SIZE", 32)
+    epochs: int = int_from_env("MMIM_TRAINER_EPOCHS", 10)
+    dropout: float = float_from_env("MMIM_TRAINER_DROPOUT", 0.3)
+    learning_rate: float = float_from_env("MMIM_TRAINER_LEARNING_RATE", 10e-4)
+    train_limit: float = float_from_env("MMIM_TRAINER_TRAIN_LIMIT", 1.0)
+
+    def summary(self) -> dict[str, int | float]:
+        return {
+            "batch_size": self.batch_size,
+            "epochs": self.epochs,
+            "dropout": self.dropout,
+            "learning_rate": self.learning_rate,
+            "train_limit": self.train_limit,
+        }

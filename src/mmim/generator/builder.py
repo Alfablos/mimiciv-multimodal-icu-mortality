@@ -1,6 +1,8 @@
+from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import cast
 import json
 import os
 from sklearn.model_selection import train_test_split
@@ -21,6 +23,22 @@ from .utils import (
     compute_pos_negs,
     infer_images_extension,
     build_image_paths,
+)
+
+from .manifest import (
+    ManifestV1,
+    DataFileSpecV1,
+    SplitsSpecV1,
+    QueriesSpecV1,
+    GeneratorCodeSpec,
+    DataSpecV1,
+    FilesystemStorage,
+    ImageDataSpec,
+    ImageExtension,
+    LakeFSStorage,
+    TabularDataSpec,
+    TabularFilesSpecV1,
+    DatasetDefaultsV1,
 )
 
 from mmim.store.filesystem import FilesystemWriteOnlyStore
@@ -81,23 +99,49 @@ default_dataset_version = "v001"
 random_seed = 42
 
 
-def build(args) -> tuple[str, str | None]:
-    duckdb_db = args.database_path
-    metadata_file = args.metadata_file
-    images_base_dir = args.images_base_dir
-    max_workers = args.max_workers
-    debug = args.debug
+class BuildOutput(BaseModel):
+    output_dir: str
+    lakefs_ref: str | None
+    manifest: ManifestV1
 
-    if images_base_dir is not None:
-        split = images_base_dir.split("@")
-        if len(split) != 2:
-            raise ValueError(f"{images_base_dir} is not a valid <dir>@<alias> string.")
-        if len(split[1].split(" ")) > 1:
-            raise ValueError(
-                f"{images_base_dir} is not a valid <dir>@<alias> string. The alias cannot contain spaces."
-            )
-        images_base_dir = split[0]
-        images_base_dir_alias = split[1].rstrip("/")
+
+def build_cli(args):
+    _ = build(
+        args.database_path,
+        args.metadata_file,
+        args.images_base_dir,
+        args.max_workers,
+        args.debug,
+        args.output_dir,
+    )
+
+
+def build(
+    duckdb_db: str,
+    metadata_file: str,
+    images_base_dir: str,
+    max_workers: int,
+    debug: bool,
+    output_dir: str,
+) -> BuildOutput:
+    if images_base_dir is None:
+        raise ValueError("--images-base-dir is required")
+
+    split = images_base_dir.split("@")
+    if len(split) != 2:
+        raise ValueError(f"{images_base_dir} is not a valid <dir>@<alias> string.")
+    if len(split[1].split(" ")) > 1:
+        raise ValueError(
+            f"{images_base_dir} is not a valid <dir>@<alias> string. The alias cannot contain spaces."
+        )
+
+    # using / as images base dir gives me chills, still I need to avoid consequent mess
+    images_base_dir_path = split[0].rstrip("/") if split[0] != "/" else split[0]
+    images_base_dir_alias = split[1].rstrip("/")
+    if images_base_dir_path == "":
+        raise ValueError("Image base directory cannot be empty.")
+    if images_base_dir_alias == "":
+        raise ValueError("Image base directory alias cannot be empty.")
 
     git_sha = os.getenv("GIT_SHA")
     git_ref = os.getenv("GIT_REF")
@@ -129,9 +173,7 @@ def build(args) -> tuple[str, str | None]:
     if (lakefs_repository is None or lakefs_repository == "") and commit_to_lakefs:
         raise ValueError("The variable LAKEFS_REPOSITORY MUST be set.")
 
-    output_dir = (
-        os.getenv("MMIM_GENERATOR_OUTPUT_DIR", args.output_dir).rstrip("/") + "/"
-    )
+    output_dir = os.getenv("MMIM_GENERATOR_OUTPUT_DIR", output_dir).rstrip("/") + "/"
 
     dataset_version = os.getenv(
         "MMIM_GENERATOR_DATASET_VERSION", default_dataset_version
@@ -142,9 +184,7 @@ def build(args) -> tuple[str, str | None]:
     )
 
     not_found_required_files = find_paths(
-        [duckdb_db, metadata_file, images_base_dir]
-        if images_base_dir is not None
-        else [duckdb_db, metadata_file]
+        [duckdb_db, metadata_file, images_base_dir_path]
     )
     if len(not_found_required_files) != 0:
         raise FileNotFoundError(
@@ -184,35 +224,30 @@ def build(args) -> tuple[str, str | None]:
         "\n",
     )
 
-    if images_base_dir is not None:
-        images_extension = infer_images_extension(
-            images_base_dir, supported_image_extensions
-        )
-        if images_extension is None:
-            raise ValueError(
-                f"Directory `{images_base_dir}` contains no image in supported formats {', '.join(supported_image_extensions)}"
-            )
-
-        local_image_paths = build_image_paths(
-            ds=initial_dataset,
-            base_dir=images_base_dir,
-            images_extension=images_extension,
+    images_extension = infer_images_extension(
+        images_base_dir_path, supported_image_extensions
+    )
+    if images_extension is None:
+        raise ValueError(
+            f"Directory `{images_base_dir_path}` contains no image in supported formats {', '.join(supported_image_extensions)}"
         )
 
-        print("About to check needed images availability...")
-        not_found_required_files = []
-        for i in local_image_paths:
-            if not Path(i).exists():
-                not_found_required_files.append(i)
-        if not_found_required_files:
-            raise FileNotFoundError(
-                f"The following images are required but were not found:\n {'\n'.join(not_found_required_files)}"
-            )
-        print("Images check OK.")
-    else:
-        print(
-            "WARNING: --images-base-dir was not provided. I'm unable to check for missing images. You're on your own."
+    local_image_paths = build_image_paths(
+        ds=initial_dataset,
+        base_dir=images_base_dir_path,
+        images_extension=images_extension,
+    )
+
+    print("About to check needed images availability...")
+    not_found_required_files = []
+    for i in local_image_paths:
+        if not Path(i).exists():
+            not_found_required_files.append(i)
+    if not_found_required_files:
+        raise FileNotFoundError(
+            f"The following images are required but were not found:\n {'\n'.join(not_found_required_files)}"
         )
+    print("Images check OK.")
 
     print("About to check for null values. ")
     for feat in core_features_allowed_missing:
@@ -278,15 +313,6 @@ def build(args) -> tuple[str, str | None]:
     )
     json_schema = json.dumps(obj=schema, indent=2, sort_keys=True)
 
-    queries = {
-        "images_query_sha256": sha256str(images_query),
-        "images_query": images_query,
-        "cohort_query_sha256": sha256str(cohort_query),
-        "cohort_query": cohort_query,
-        "features_query_sha256": sha256str(labs_n_vitals_query),
-        "features_query": labs_n_vitals_query,
-    }
-
     _, train_positives, train_negatives = compute_pos_negs(
         ds=train_ds, label_column=label
     )
@@ -294,81 +320,92 @@ def build(args) -> tuple[str, str | None]:
     common_data_prefix = DATASET_NAME + "/" + dataset_version
     image_data_prefix = images_base_dir_alias
 
-    manifest = {
-        "dataset": DATASET_NAME,
-        "dataset_version": dataset_version,
-        "schema_version": "v1",
-        "prediction_time": "icu_intime",
-        "lookback_window_hours": 24,
-        "sources": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
-        "generator_code": {
-            "git_sha": git_sha,
-            "git_ref": git_ref,
-        },
-        "queries": queries,
-        "splits": {
-            "strategy": "first_stay_per_subject_first_cxr_random_split",
-            "random_seed": random_seed,
-            "train": dataset_summary(train_ds, label),
-            "validation": dataset_summary(val_ds, label),
-            "test": dataset_summary(test_ds, label),
-            "leakage_checks": leakage_check(train_ds, val_ds, test_ds),
-        },
-        "data_prefix": common_data_prefix,
-        "data": {
-            "tabular": {
-                "extension": "csv",
-                "storage": "lakefs" if commit_to_lakefs else "local",
-                "branch": lakefs_branch if commit_to_lakefs else None,
-                "label_column": label,
-                "files": {
-                    "training": {
-                        "path": "ds_train.csv",
-                        "format": "csv",
-                        "sha256": sha256str(train_ds_csv),
-                    },
-                    "validation": {
-                        "path": "ds_val.csv",
-                        "format": "csv",
-                        "sha256": sha256str(val_ds_csv),
-                    },
-                    "test": {
-                        "path": "ds_test.csv",
-                        "format": "csv",
-                        "sha256": sha256str(test_ds_csv),
-                    },
-                    "statistics": {
-                        "path": "stats.json",
-                        "format": "json",
-                        "sha256": sha256str(json_stats),
-                    },
-                    "schema": {
-                        "path": "schema.json",
-                        "format": "json",
-                        "sha256": sha256str(json_schema),
-                    },
-                },
-            },
-            "images": {
-                "extension": images_extension,
-                "storage": "lakefs" if commit_to_lakefs else "local",
-                "repo": lakefs_repository if commit_to_lakefs else None,
-                "branch": lakefs_branch if commit_to_lakefs else None,
-                "prefix": image_data_prefix,
-                # subject_prefix = subject_id[:2]
-                "path_template": "p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
-            },
-        },
-        # negatives = survivors
-        # positives = deaths
-        "defaults": {"loss_pos_weight": float(train_negatives / train_positives)},
-    }
+    if commit_to_lakefs:
+        assert lakefs_repository is not None
+        storage = LakeFSStorage(
+            kind="lakefs", repo=lakefs_repository, ref=lakefs_branch
+        )
+    else:
+        storage = FilesystemStorage(kind="filesystem", root=output_dir)
 
-    json_manifest = json.dumps(manifest, indent=2, sort_keys=True)
+    image_extension = cast(ImageExtension, images_extension)
+
+    manifest = ManifestV1(
+        dataset=DATASET_NAME,
+        dataset_version=dataset_version,
+        schema_version="v1",
+        prediction_time="icu_intime",
+        lookback_window_hours=24,
+        generator_code=GeneratorCodeSpec(git_sha=git_sha, git_ref=git_ref),
+        sources=["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
+        queries=QueriesSpecV1(
+            images_query=images_query,
+            cohort_query=cohort_query,
+            features_query=labs_n_vitals_query,
+        ),
+        splits=SplitsSpecV1(
+            strategy="first_stay_per_subject_first_cxr_random_split",
+            random_seed=random_seed,
+            train=dataset_summary(train_ds, label),
+            validation=dataset_summary(val_ds, label),
+            test=dataset_summary(test_ds, label),
+            leakage_checks=leakage_check(train_ds, val_ds, test_ds),
+        ),
+        data_prefix=common_data_prefix,
+        data=DataSpecV1(
+            tabular=TabularDataSpec(
+                storage=storage,
+                extension="csv",
+                label_column=label,
+                files=TabularFilesSpecV1(
+                    training=DataFileSpecV1(
+                        path="ds_train.csv",
+                        format="csv",
+                        sha256=sha256str(train_ds_csv),
+                    ),
+                    validation=DataFileSpecV1(
+                        path="ds_val.csv",
+                        format="csv",
+                        sha256=sha256str(val_ds_csv),
+                    ),
+                    test=DataFileSpecV1(
+                        path="ds_test.csv",
+                        format="csv",
+                        sha256=sha256str(test_ds_csv),
+                    ),
+                    statistics=DataFileSpecV1(
+                        path="stats.json",
+                        format="json",
+                        sha256=sha256str(json_stats),
+                    ),
+                    schema=DataFileSpecV1(
+                        path="schema.json",
+                        format="json",
+                        sha256=sha256str(json_schema),
+                    ),
+                ),
+            ),
+            images=ImageDataSpec(
+                storage=storage,
+                prefix=image_data_prefix,
+                extension=image_extension,
+                # subject_prefix is subject_id[:2]
+                path_template="p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}",
+            ),
+        ),
+        defaults=DatasetDefaultsV1(
+            loss_pos_weight=float(train_negatives / train_positives)
+        ),
+    )
+
+    json_manifest = json.dumps(
+        manifest.model_dump(mode="json", by_alias=True), indent=2, sort_keys=True
+    )
 
     commit_message = f"Generated by mmim-generator {git_ref}/{git_sha}"
     commit_metadata: dict[str, str] = {"builder_ref": git_ref, "builder_sha": git_sha}
 
+    # The generator always creates a complete local copy of the dataset bundle under `output_dir`. If LakeFS is configured through `LAKEFS_URL`, `LAKEFS_ACCESS_KEY_ID`, `LAKEFS_SECRET_ACCESS_KEY`, and `LAKEFS_REPOSITORY`, the generator also uploads the same bundle to a LakeFS branch and commits it. The storage type in the manifest depends on whether we're writing to LakeFS or not.
     fs_store = FilesystemWriteOnlyStore(
         output_dir, prefix=common_data_prefix, debug=debug
     )
@@ -381,17 +418,16 @@ def build(args) -> tuple[str, str | None]:
         path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
     )  # puts the manifest at the root!
 
-    if images_base_dir:
-        # abstracts away local/remote storage stripping the prefix and preserving only the last part
-        # these paths will be mounted on the local/remote prefix
-        pure_paths = [Path(p).relative_to(images_base_dir) for p in local_image_paths]
-        # change prefix to images prefix: data will now be written to a new prefix
-        fs_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
-        for local, pure in zip(local_image_paths, pure_paths):
-            pure_str = f"{pure}"
-            if fs_store.exists(pure_str):
-                continue
-            fs_store.write_file(local_path=local, remote_path=pure_str, overwrite=False)
+    # abstracts away local/remote storage stripping the prefix and preserving only the last part
+    # these paths will be mounted on the local/remote prefix
+    pure_paths = [Path(p).relative_to(images_base_dir_path) for p in local_image_paths]
+    # change prefix to images prefix: data will now be written to a new prefix
+    fs_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
+    for local, pure in zip(local_image_paths, pure_paths):
+        pure_str = f"{pure}"
+        if fs_store.exists(pure_str):
+            continue
+        fs_store.write_file(local_path=local, remote_path=pure_str, overwrite=False)
 
     info = fs_store.commit(message=commit_message, metadata=commit_metadata)
     print(info)
@@ -424,41 +460,36 @@ def build(args) -> tuple[str, str | None]:
             path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
         )
 
-        if images_base_dir is not None:
-            lake_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
-            pure_paths_str = [f"{pp}" for pp in pure_paths]
+        lake_store.set_prefix(prefix=common_data_prefix + "/" + image_data_prefix)
+        pure_paths_str = [f"{pp}" for pp in pure_paths]
 
-            uploaded = 0
-            skipped = 0
+        uploaded = 0
+        skipped = 0
 
-            def upload_image(local: str, pure: str) -> str:
-                if lake_store.exists(pure):
-                    if debug:
-                        print(
-                            f"LakeFSWriteOnlyStore: {pure} already exists. Skipping..."
-                        )
-                    return "skipped"
-                lake_store.write_file(
-                    local_path=local, remote_path=pure, overwrite=False
-                )
-                return "uploaded"
+        def upload_image(local: str, pure: str) -> str:
+            if lake_store.exists(pure):
+                if debug:
+                    print(f"LakeFSWriteOnlyStore: {pure} already exists. Skipping...")
+                return "skipped"
+            lake_store.write_file(local_path=local, remote_path=pure, overwrite=False)
+            return "uploaded"
 
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = [
-                    pool.submit(upload_image, local, pure)
-                    for local, pure in zip(local_image_paths, pure_paths_str)
-                ]
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [
+                pool.submit(upload_image, local, pure)
+                for local, pure in zip(local_image_paths, pure_paths_str)
+            ]
 
-                for future in as_completed(futures):
-                    result: str = future.result()
-                    if result == "skipped":
-                        skipped += 1
-                    if result == "uploaded":
-                        uploaded += 1
+            for future in as_completed(futures):
+                result: str = future.result()
+                if result == "skipped":
+                    skipped += 1
+                if result == "uploaded":
+                    uploaded += 1
 
-            if debug:
-                print(f"Uploaded {uploaded} images.")
-                print(f"Skipped {skipped} images.")
+        if debug:
+            print(f"Uploaded {uploaded} images.")
+            print(f"Skipped {skipped} images.")
 
         try:
             commit_id = lake_store.commit(
@@ -473,9 +504,12 @@ def build(args) -> tuple[str, str | None]:
                 raise
             print("Nothing to commit.")
             commit_id = lake_store.get_branch().head.get_commit().id
-        return output_dir, commit_id
+
+        return BuildOutput(
+            output_dir=output_dir, lakefs_ref=commit_id, manifest=manifest
+        )
     else:
-        return output_dir, None
+        return BuildOutput(output_dir=output_dir, lakefs_ref=None, manifest=manifest)
 
 
 def prepare_set(df: pd.DataFrame, medians: dict[str, float]) -> pd.DataFrame:

@@ -1,7 +1,7 @@
 from os import cpu_count
 from argparse import ArgumentParser
 
-from .builder import build
+from .builder import build_cli
 
 
 def main():
@@ -47,9 +47,9 @@ def main():
         "--images-base-dir",
         "--images-basedir",
         "--images-dir",
-        required=False,
+        required=True,
         help="""
-        The path to the root of the images dataset and its alias (no spaces allowed in the alias). If not provided checks will be skipped.
+        The path to the root of the images dataset and its alias (no spaces allowed in the alias).
         Format: ./path/to/dir@alias. Example: /home/myuser/datasets/mimic-images@mimic-cxr-jpg
         """,
     )
@@ -64,7 +64,7 @@ def main():
         default=int((cpu_count() or 16) / 2),
     )
 
-    build_cmd.set_defaults(func=build)
+    build_cmd.set_defaults(func=build_cli)
 
     args = parser.parse_args()
     args.func(args)

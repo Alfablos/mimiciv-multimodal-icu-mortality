@@ -1789,6 +1789,7 @@ source = { editable = "." }
 dependencies = [
     { name = "lakefs" },
     { name = "pandas" },
+    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
@@ -1830,6 +1831,7 @@ requires-dist = [
     { name = "mlflow", marker = "extra == 'trainer'", specifier = ">3.11.0" },
     { name = "numpy", marker = "extra == 'trainer'" },
     { name = "pandas", specifier = "<=3.0" },
+    { name = "pydantic", specifier = ">=2.13.2" },
     { name = "scikit-learn", marker = "extra == 'generator'", specifier = ">=1.8.0" },
     { name = "scikit-learn", marker = "extra == 'trainer'", specifier = ">=1.8.0" },
     { name = "torch", marker = "extra == 'trainer'", specifier = ">=2.11.0" },
