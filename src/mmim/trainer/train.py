@@ -35,7 +35,7 @@ from .gradcam import grad_cam
 from .models.fusion import Fusion
 from .config import dataset_shuffle, num_workers, debug, Hyperparameters
 from .meta import log_metadata
-from .config import model_selection_metric
+from .config import model_selection_metric, experiment_name, experiment_family
 
 
 class Metrics(BaseModel):
@@ -58,13 +58,20 @@ if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
 type TrainStatus = Literal["completed", "interrupted", "failed"]
 
 
+class LoggedModel(BaseModel):
+    name: str
+    uri: str
+    epoch: int
+    metrics: Metrics
+    val_loss: float
+    selection_metric: str
+    selection_metric_value: float
+
+
 class TrainLoopResult(BaseModel):
     start_time: str
     end_time: str
-    best_epoch: int | None
-    best_metrics: Metrics | None
-    best_val_loss: float | None
-    best_model_uri: str | None
+    best_model: LoggedModel | None
     train_status: TrainStatus
 
 
@@ -88,25 +95,53 @@ def is_better_score(
 
 def log_model(
     model: Fusion, epoch: int, metrics: Metrics, val_loss: float, train_start_time: str
-):
-    artifact_path = f"multimodal_icu_mortality@{train_start_time}_e{epoch}"
+) -> LoggedModel:
+
+    float_val_loss = float(val_loss)  # converts np.float64
+    model_name = f"{experiment_family}@{train_start_time}_e{epoch}"
+    best_model_selection_metric_value = getattr(metrics, model_selection_metric)
+    model_metadata = {
+        "epoch": epoch,
+        "loss": float_val_loss,
+        "auroc": metrics.AUROC,
+        "auprc": metrics.AUPRC,
+        "sens_at_95_spec": metrics.sens_at_95_spec,
+        "time": datetime.now(UTC).strftime("%Y%m%d_%H%M"),
+        "selection_metric": model_selection_metric,
+        "selection_metric_value": best_model_selection_metric_value,
+    }
     model_info: mlflow.models.model.ModelInfo = mlflow.pytorch.log_model(
-        model, name=artifact_path
+        model,
+        name=model_name,
+        params=model_metadata,
+        tags={"family": experiment_family},
     )
 
     model_uri = model_info.model_uri
-    mlflow.log_metric("best_epoch", epoch)
-    mlflow.log_metric("best_val_loss", val_loss)
-    mlflow.log_metric("best_val_auroc", metrics.AUROC)
-    mlflow.log_metric("best_val_auprc", metrics.AUPRC)
-    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics.sens_at_95_spec)
+
+    mlflow.log_metric("best_epoch", model_metadata["epoch"])
+    mlflow.log_metric("best_val_loss", model_metadata["loss"])
+    mlflow.log_metric("best_val_auroc", model_metadata["auroc"])
+    mlflow.log_metric("best_val_auprc", model_metadata["auprc"])
+    mlflow.log_metric("best_val_sens_at_95_spec", model_metadata["sens_at_95_spec"])
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
-    mlflow.set_tag("best_model.time", datetime.now(UTC).strftime("%Y%m%d_%H%M"))
-    mlflow.set_tag("best_model.selection_metric", model_selection_metric)
+    mlflow.set_tag("best_model.time", model_metadata["time"])
+    mlflow.set_tag("best_model.selection_metric", model_metadata["selection_metric"])
+    mlflow.set_tag(
+        "best_model.selection_metric_value", model_metadata["selection_metric_value"]
+    )
     mlflow.set_tag("best_model.model_uri", model_uri)
 
-    return model_uri
+    return LoggedModel(
+        name=model_name,
+        uri=model_uri,
+        epoch=epoch,
+        metrics=metrics,
+        val_loss=val_loss,
+        selection_metric=model_selection_metric,
+        selection_metric_value=best_model_selection_metric_value,
+    )
 
 
 def upload_gradcam(
@@ -152,10 +187,7 @@ def train(
     loss_fn = loss_fn.to(device)
 
     best_metric: float | None = None
-    best_metrics: Metrics | None = None
-    best_epoch: int = 0
-    best_model_uri: str | None = None
-    best_val_loss: float | None = None
+    best_model: LoggedModel | None = None
 
     start_time_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     try:
@@ -214,10 +246,7 @@ def train(
             current_score = float(getattr(metrics, model_selection_metric))
             if is_better_score(current_score, best_metric, mode="higher"):
                 best_metric = current_score
-                best_metrics = metrics
-                best_epoch = epoch
-                best_val_loss = val_loss
-                best_model_uri = log_model(
+                best_model = log_model(
                     model=model,
                     epoch=epoch,
                     metrics=metrics,
@@ -239,10 +268,7 @@ def train(
     return TrainLoopResult(
         start_time=start_time_str,
         end_time=end_time_str,
-        best_epoch=best_epoch,
-        best_metrics=best_metrics,
-        best_val_loss=best_val_loss,
-        best_model_uri=best_model_uri,
+        best_model=best_model,
         train_status=train_status,
     )
 
@@ -360,9 +386,7 @@ def start_train(
     mlflow.set_tracking_uri(
         os.getenv("MLFLOW_TRACKING_URI", "sqlite://" + str(Path.cwd() / "mlflow.db"))
     )
-    mlflow_experiment_name = os.getenv(
-        "MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality"
-    )
+    mlflow_experiment_name = experiment_name
     mlflow.set_experiment(mlflow_experiment_name)
     mlflow.config.disable_system_metrics_logging()
     # mlflow.config.set_system_metrics_sampling_interval(5)

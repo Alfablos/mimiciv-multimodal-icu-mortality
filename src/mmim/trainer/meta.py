@@ -57,7 +57,7 @@ def log_metadata(manifest: ManifestV1, no_send=False):
         # "dataset.loss_positive_weight": loss_pos_weight,
         # "dataset.images_base_dir": image_base_dir,
         "dataset.name": manifest.dataset,
-        "dateset.version": manifest.dataset_version,
+        "dataset.version": manifest.dataset_version,
         "dataset.defaults": manifest.defaults,
         "dataset.generator.git_sha": manifest.generator_code.git_sha,
         "dataset.generator.git_ref": manifest.generator_code.git_ref,
