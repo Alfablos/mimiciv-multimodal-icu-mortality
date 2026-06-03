@@ -37,6 +37,9 @@ num_workers = int_from_env("MMIM_TRAINER_NUM_WORKERS", default_num_workers)
 working_directory = os.getenv("MMIM_TRAINER_WORKING_DIRECTORY", "./")
 model_selection_metric = os.getenv("MMIM_TRAINER_MODEL_SELECTION_METRIC", "AUROC")
 
+experiment_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality")
+experiment_family = experiment_name.lower().replace(" ", "_")
+
 
 class Hyperparameters(BaseModel):
     batch_size: int = int_from_env("MMIM_TRAINER_BATCH_SIZE", 32)

@@ -35,7 +35,7 @@ from .gradcam import grad_cam
 from .models.fusion import Fusion
 from .config import dataset_shuffle, num_workers, debug, Hyperparameters
 from .meta import log_metadata
-from .config import model_selection_metric
+from .config import model_selection_metric, experiment_name, experiment_family
 
 
 class Metrics(BaseModel):
@@ -96,25 +96,40 @@ def is_better_score(
 def log_model(
     model: Fusion, epoch: int, metrics: Metrics, val_loss: float, train_start_time: str
 ) -> LoggedModel:
-    model_name = f"multimodal_icu_mortality@{train_start_time}_e{epoch}"
+
+    float_val_loss = float(val_loss)  # converts np.float64
+    model_name = f"{experiment_family}@{train_start_time}_e{epoch}"
+    best_model_selection_metric_value = getattr(metrics, model_selection_metric)
+    model_metadata = {
+        "epoch": epoch,
+        "loss": float_val_loss,
+        "auroc": metrics.AUROC,
+        "auprc": metrics.AUPRC,
+        "sens_at_95_spec": metrics.sens_at_95_spec,
+        "time": datetime.now(UTC).strftime("%Y%m%d_%H%M"),
+        "selection_metric": model_selection_metric,
+        "selection_metric_value": best_model_selection_metric_value,
+    }
     model_info: mlflow.models.model.ModelInfo = mlflow.pytorch.log_model(
-        model, name=model_name
+        model,
+        name=model_name,
+        params=model_metadata,
+        tags={"family": experiment_family},
     )
 
     model_uri = model_info.model_uri
-    best_model_selection_metric_value = getattr(metrics, model_selection_metric)
 
-    mlflow.log_metric("best_epoch", epoch)
-    mlflow.log_metric("best_val_loss", val_loss)
-    mlflow.log_metric("best_val_auroc", metrics.AUROC)
-    mlflow.log_metric("best_val_auprc", metrics.AUPRC)
-    mlflow.log_metric("best_val_sensitivity_at_95_spec", metrics.sens_at_95_spec)
+    mlflow.log_metric("best_epoch", model_metadata["epoch"])
+    mlflow.log_metric("best_val_loss", model_metadata["loss"])
+    mlflow.log_metric("best_val_auroc", model_metadata["auroc"])
+    mlflow.log_metric("best_val_auprc", model_metadata["auprc"])
+    mlflow.log_metric("best_val_sens_at_95_spec", model_metadata["sens_at_95_spec"])
     mlflow.set_tag("best_model.logged", "true")
     mlflow.set_tag("best_model.epoch", str(epoch))
-    mlflow.set_tag("best_model.time", datetime.now(UTC).strftime("%Y%m%d_%H%M"))
-    mlflow.set_tag("best_model.selection_metric", model_selection_metric)
+    mlflow.set_tag("best_model.time", model_metadata["time"])
+    mlflow.set_tag("best_model.selection_metric", model_metadata["selection_metric"])
     mlflow.set_tag(
-        "best_model.selection_metric_value", best_model_selection_metric_value
+        "best_model.selection_metric_value", model_metadata["selection_metric_value"]
     )
     mlflow.set_tag("best_model.model_uri", model_uri)
 
@@ -371,9 +386,7 @@ def start_train(
     mlflow.set_tracking_uri(
         os.getenv("MLFLOW_TRACKING_URI", "sqlite://" + str(Path.cwd() / "mlflow.db"))
     )
-    mlflow_experiment_name = os.getenv(
-        "MLFLOW_EXPERIMENT_NAME", "Multimodal ICU mortality"
-    )
+    mlflow_experiment_name = experiment_name
     mlflow.set_experiment(mlflow_experiment_name)
     mlflow.config.disable_system_metrics_logging()
     # mlflow.config.set_system_metrics_sampling_interval(5)
