@@ -112,6 +112,8 @@ If LakeFS is enabled, the same dataset artifacts are written there as well. Gene
 > [!WARNING]
 > **LakeFS image matching is path-based**. If a path already exists, the generator assumes the object is already present; it **does not hash or compare image contents**.
 
+For the full storage write policy, including overwrite behavior and image path matching, see [`mmim.store`](../store/README.md).
+
 ```json
 {
   "manifest_version": "v1",
