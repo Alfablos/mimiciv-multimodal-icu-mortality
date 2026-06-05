@@ -16,7 +16,7 @@ The full pipeline will eventually:
 
 1. Generate the training, validation and test sets. (_current_)
 2. Train the model and collect metrics from the validation set. (_current_)
-3. Validate the model against a fixed metric value and other versions that have entered the model lifecycle (_current_) after validating the Fusion model against baseline ones (Decision Trees or Linear Regression, _planned_). If validation passes the model is then assigned the **candide** alias.
+3. Validate the model against a fixed metric value and other versions that have entered the model lifecycle (_current_) after validating the Fusion model against baseline ones (Decision Trees or Logistic Regression, _planned_). If validation passes the model is then assigned the **candidate** alias.
 4. Deploy the model (_planned_)
 5. Test the model against the test set and act consequently (_planned_)
 
