@@ -97,7 +97,7 @@ Tabular and metadata artifacts are always rewritten:
 | `schema.json` | `write_text(..., overwrite=True)` |
 | `manifest.json` | `write_text(..., overwrite=True)` |
 
-Local output writes `manifest.json` at the output root with `with_prefix=False`. LakeFS output writes `manifest.json` both under the dataset prefix and at the repository root.
+The generator writes `manifest.json` under the dataset prefix and also writes a root-level copy with `with_prefix=False`. The root-level manifest is a convenience copy of the latest generated dataset version manifest for that filesystem output directory or LakeFS repository branch.
 
 Images are not overwritten by the generator. For each selected image, the generator computes the image path relative to the input image base directory, switches the store prefix to `<data_prefix>/<image_alias>`, and checks whether that relative path already exists in the target store. If it exists, the image is skipped. If it does not exist, the image is copied or uploaded with `overwrite=False`.
 
