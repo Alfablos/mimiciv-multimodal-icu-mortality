@@ -78,7 +78,12 @@ The pipeline is designed to accommodate for runs that happen outside the orchest
 | Model architecture, training, metrics, Grad-CAM | [Trainer module](src/mmim/trainer/README.md) |
 | Dagster assets and quality gates | [Orchestrator module](src/mmim/orchestrator/README.md) |
 | Filesystem/LakeFS storage abstraction | [Store module](src/mmim/store/README.md) |
-| Planned work | [Roadmap](ROADMAP.md) |
+
+## Data And Privacy
+
+This repository does not include MIMIC data, generated datasets, model artifacts, MLflow artifacts, or local environment files. Users must provide their own credentialed access to MIMIC-IV, MIMIC-ED, and MIMIC-CXR/MIMIC-CXR-JPG.
+
+Do not commit generated datasets, images, credentials, `.env` files, MLflow artifacts, or other potentially sensitive local outputs.
 
 ## Quick Start
 
@@ -136,7 +141,6 @@ Root-level files:
 | Path | Purpose |
 |---|---|
 | `pyproject.toml` | Package metadata, optional dependency groups, CLI scripts, and Dagster config. |
-| `ROADMAP.md` | Planned model, orchestration, serving, and monitoring work. |
 | `README.md` | High-level project overview. |
 
 ## Development
@@ -210,16 +214,10 @@ The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIC-CXR-JP
 
 In a time where AI agents could complete my entire roadmap for this project in a single night and still have time to build a rocket before making me coffee, it was only used here for:
 
-* Write a fair amount of tests
-* Validate software architectures and strategies
-* Check code refactoring
-* Clarify what topics to study in more depth before using them
-* Fix typos
-* Write the README files backbone I could iterate on
-* Frustrate my humoristic vein
-
-## Data And Privacy
-
-This repository does not include MIMIC data, generated datasets, model artifacts, MLflow artifacts, or local environment files. Users must provide their own credentialed access to MIMIC-IV, MIMIC-ED, and MIMIC-CXR/MIMIC-CXR-JPG.
-
-Do not commit generated datasets, images, credentials, `.env` files, MLflow artifacts, or other potentially sensitive local outputs.
+* Writing a fair amount of tests
+* Validating software architectures and strategies
+* Checking code refactoring
+* Clarifying what topics to study in more depth before using them
+* Fixing typos
+* Writing the README files backbone I could iterate on
+* Contain my humoristic vein
