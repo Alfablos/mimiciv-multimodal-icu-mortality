@@ -185,7 +185,7 @@ The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIC-CXR-JP
 
 * Monitoring
 
-* Dashboard + explanatory LLM (monitoring system connector) + trusted frontend components
+* Dashboard + explanatory LLM (monitoring system connector) + trusted client-side LLM-specified frontend components
 
 * GCP/AWS training
 
