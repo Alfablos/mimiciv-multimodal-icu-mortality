@@ -414,9 +414,10 @@ def build(
     fs_store.write_text(path="ds_test.csv", data=test_ds_csv, overwrite=True)
     fs_store.write_text(path="stats.json", data=json_stats, overwrite=True)
     fs_store.write_text(path="schema.json", data=json_schema, overwrite=True)
+    fs_store.write_text(path="manifest.json", data=json_manifest, overwrite=True)
     fs_store.write_text(
         path="manifest.json", data=json_manifest, overwrite=True, with_prefix=False
-    )  # puts the manifest at the root!
+    )  # root copy points to the latest generated dataset version
 
     # abstracts away local/remote storage stripping the prefix and preserving only the last part
     # these paths will be mounted on the local/remote prefix

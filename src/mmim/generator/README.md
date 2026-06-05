@@ -81,10 +81,11 @@ Local files written under the output directory:
 
 ```text
 out/
-├── manifest.json
+├── manifest.json                         # copy of the latest generated dataset version manifest
 ├── info.txt
 └── multimodal-icu-mortality-24h/
     └── <dataset_version>/
+        ├── manifest.json                 # manifest for this dataset version
         ├── ds_train.csv
         ├── ds_val.csv
         ├── ds_test.csv
@@ -94,8 +95,7 @@ out/
             └── pXX/pXXXX/sXXXX/<dicom_id>.<ext>
 ```
 
-
-Locally, `manifest.json` is written at the output root. In LakeFS, `manifest.json` is written both at the repository root and under the dataset prefix. Tabular files and images are placed under the dataset prefix.
+The canonical manifest for a generated dataset version is written under the dataset prefix: `multimodal-icu-mortality-24h/<dataset_version>/manifest.json`. A second `manifest.json` is written at the filesystem output root or LakeFS repository root as a convenience copy of the latest generated dataset version manifest. Tabular files and images are placed under the dataset prefix.
 
 | File | Description |
 |---|---|
@@ -116,47 +116,7 @@ For the full storage write policy, including overwrite behavior and image path m
 
 ```json
 {
-  "manifest_version": "v1",
-  "dataset": "multimodal-icu-mortality-24h",
-  "dataset_version": "v001",
-  "data_prefix": "multimodal-icu-mortality-24h/v001",
   "data": {
-    "tabular": {
-      "storage": {
-        "kind": "lakefs",
-        "repo": "mmim",
-        "ref": "build_20260604_1512-v001-orchestration-a1b2c3d4e"
-      },
-      "extension": "csv",
-      "label_column": "hospital_expire_flag",
-      "files": {
-        "training": {
-          "format": "csv",
-          "path": "ds_train.csv",
-          "sha256": "..."
-        },
-        "validation": {
-          "format": "csv",
-          "path": "ds_val.csv",
-          "sha256": "..."
-        },
-        "test": {
-          "format": "csv",
-          "path": "ds_test.csv",
-          "sha256": "..."
-        },
-        "statistics": {
-          "format": "json",
-          "path": "stats.json",
-          "sha256": "..."
-        },
-        "schema": {
-          "format": "json",
-          "path": "schema.json",
-          "sha256": "..."
-        }
-      }
-    },
     "images": {
       "storage": {
         "kind": "lakefs",
@@ -166,6 +126,77 @@ For the full storage write policy, including overwrite behavior and image path m
       "prefix": "mimic-cxr-jpg",
       "extension": "jpg",
       "path_template": "p{subject_prefix}/p{subject_id}/s{study_id}/{dicom_id}.{images_extension}"
+    },
+    "tabular": {
+      "storage": {
+        "kind": "lakefs",
+        "repo": "mmim",
+        "ref": "build_20260604_1512-v001-orchestration-a1b2c3d4e"
+      },
+      "extension": "csv",
+      "label_column": "hospital_expire_flag",
+      "files": {
+        "schema": {
+          "format": "json",
+          "path": "schema.json",
+          "sha256": "..."
+        },
+        "statistics": {
+          "format": "json",
+          "path": "stats.json",
+          "sha256": "..."
+        },
+        "test": {
+          "format": "csv",
+          "path": "ds_test.csv",
+          "sha256": "..."
+        },
+        "training": {
+          "format": "csv",
+          "path": "ds_train.csv",
+          "sha256": "..."
+        },
+        "validation": {
+          "format": "csv",
+          "path": "ds_val.csv",
+          "sha256": "..."
+        }
+      }
+    }
+  },
+  "data_prefix": "multimodal-icu-mortality-24h/v001",
+  "dataset": "multimodal-icu-mortality-24h",
+  "dataset_version": "v001",
+  "defaults": {
+    "loss_pos_weight": 5.51
+  },
+  "generator_code": {
+    "git_ref": "orchestration",
+    "git_sha": "..."
+  },
+  "lookback_window_hours": 24,
+  "manifest_version": "v1",
+  "prediction_time": "icu_intime",
+  "queries": {
+    "images_query": "...",
+    "images_query_sha256": "...",
+    "cohort_query": "...",
+    "cohort_query_sha256": "...",
+    "features_query": "...",
+    "features_query_sha256": "..."
+  },
+  "schema_version": "v1",
+  "sources": ["MIMIC-IV", "MIMIC-ED", "MIMIC-CXR", "MIMIC-CXR-JPG"],
+  "splits": {
+    "strategy": "first_stay_per_subject_first_cxr_random_split",
+    "random_seed": 42,
+    "train": {"total": 6096, "positives": 936, "negatives": 5160, "prevalence": 0.1535},
+    "validation": {"total": 762, "positives": 105, "negatives": 657, "prevalence": 0.1378},
+    "test": {"total": 762, "positives": 92, "negatives": 670, "prevalence": 0.1207},
+    "leakage_checks": {
+      "train_val_are_disjoint": true,
+      "train_test_are_disjoint": true,
+      "val_test_are_disjoint": true
     }
   }
 }
@@ -181,6 +212,8 @@ The same manifest shape is used for filesystem output, with storage specs like:
 ```
 
 Tabular data and images each carry their own storage spec, so they can be resolved independently by downstream code.
+
+Older generated manifests may include a redundant `data.tabular.prefix` field. The current contract uses the top-level `data_prefix` for tabular files and `data.images.prefix` for the image subtree.
 
 
 ## Notes
