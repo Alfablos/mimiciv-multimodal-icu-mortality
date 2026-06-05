@@ -1,7 +1,6 @@
 from mlflow.entities.model_registry import RegisteredModel
 import os
 from pathlib import Path
-from multiprocessing import cpu_count
 from mmim.orchestrator.defs.pipeline.model import DatasetManifestOutput
 import dagster as dg
 from mlflow import MlflowClient
@@ -104,9 +103,9 @@ def dataset_manifest(
             duckdb_db=config.database_path,
             metadata_file=config.metadata_file,
             images_base_dir=config.images_base_dir,
-            max_workers=max(((cpu_count() or 1) // 2) - 2, 0),
-            debug=True,
-            output_dir="./out",
+            max_workers=config.max_workers,
+            debug=config.debug,
+            output_dir=config.output_dir,
         )
 
         dataset_manifest_output = DatasetManifestOutput(
