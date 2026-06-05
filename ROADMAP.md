@@ -1,7 +1,7 @@
 # Roadmap
 
 1. ~~Basic orchestration~~
-2. Baseline model (Decision Tree/Linear Regression and CNN with binary classification) for standalone tabular-only and visual-only predictions.
+2. Baseline model (Decision Tree/Logistic Regression and CNN with binary classification) for standalone tabular-only and visual-only predictions.
 3. Full orchestration:
     1. Orchestration also compares to baseline model
     2. Model deploy (platform: to be defined)
