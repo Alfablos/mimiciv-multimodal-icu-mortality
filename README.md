@@ -3,19 +3,19 @@
 This project scaffolds a prediction model in a MLOps pipeline.
 The model is built to compare multimodal Vs tabular-only data performance at predicting a patient's death probability during the current stay at the moment of ICU admission. The pipeline goes from the dataset generation to (currently) tagging the best model as a `candidate` once quality gates have passed.
 
-The model is NOT meant for production, and this project is all of the following:
+The model is NOT meant for production, this is **currently a learning project** that's all of the following:
 
-* A way to put in practices as many new learnings I did in my Machine Learning learning path as possible.
+* A way to put into practice as many new learnings I did in my Machine Learning learning path as possible.
 * A way to learn MLOps coming from DevOps: I'm not focusing on Kubernetes deployment, GCP/AWS, Prometheus + Grafana (yet) since that would distract my attention from what I need to learn from scratch; the philosophy here is "to boldly go where I've never gone before", I'll later meet what I'm already familiar with halfway.
 * A Python refresh.
 * A way to figure out how far my knowledge is from what production needs and a map I'll use to fill the gap.
 
-A small disclaimer: despite I used to attend Medical School and was close to graduating when I had to leave, intensive care and its recent findings and literature are something I can't say I'm familiar with, so should this project reach a good level from other point of views, it would at least need a specialist to adjust it.
+A small disclaimer: although I used to attend Medical School and was close to graduating when I had to leave, intensive care and its recent findings and literature are something I can't say I'm familiar with, so should this project reach a good level from other point of views, it would at least need a specialist to bring it closer to production.
 
 ## Model
 
-The main question the model tries to answer is "Does providing chest X-Ray images along with demographics, vitals and lab tests data to a model improve the prediction accuracy for a model that has to assess the death probability within the current patient stay?".
-The basic intent is provide a sharper tool when it comes to deciding what output to put in place to get the best outcome; the model should ideally help clinicians/triage determine what patient needs closer monitoring or more experienced nurses.
+The main question the model tries to answer is "Does providing chest X-Ray images along with demographics, vitals, and lab test data to a model improve the prediction accuracy for a model that has to assess the death probability within the current patient stay?".
+The basic intent is provide a sharper tool when it comes to deciding what care pathway, people and tools to put in place to get the best outcome; the model should ideally, for example, help clinicians/triage determine what patient needs closer monitoring or more experienced nurses.
 
 This project estimates in-hospital death risk for patients **just admitted** to the ICU. It uses data from the 24 hours before ICU admission up to ICU admission time, where `T=0` is `mimiciv_icu.icustays.intime`.
 
@@ -49,16 +49,26 @@ For more information about the model's intent, architecture and current limitati
 
 ## Pipeline
 
-This project is based on MLFlow + Dagster. MLFlow needs to be externally deployed while Dagster can be run with `dg dev` or with `dgd` after sourcing `./up.sh`.
+This project is based on MLflow + Dagster. MLflow can be externally deployed and Dagster can be run with `dg dev` or with `dgd` after sourcing `./up.sh`.
 
 Overall steps of the pipeline:
 
 1. Generate the dataset (optional if already built) + manifest. See the [Generator module](src/mmim/generator/README.md) for more info about the manifest definition and for instructions on how to perform this step.
-2. Train the model. The MLFlow instance must be available. See the [Trainer module](src/mmim/trainer/README.md) for more info about how to run it.
-3. Evaluate the model
-4. Promote the model to a `candidate` if gates pass. See the [Orchestrator module](src/mmim/orchestrator/README.md) to learn more on how to get started, what is the orchestration rationale and what gates are in place.
+2. Train the model. The MLflow instance must be available. See the [Trainer module](src/mmim/trainer/README.md) for more info about how to run it.
+3. Evaluate and promote the model to a `candidate` if gates pass. See the [Orchestrator module](src/mmim/orchestrator/README.md) to learn more on how to get started, what is the orchestration rationale and what gates are in place.
 
-The pipeline is designed to accomodate for runs that happen outside the orchestrator, which can still provide a better model than the current one being tested and all the logged others. This means that the MLFlow instance can be pointed to by runs without the need for the orchestrator to be aware of it. At some point, however, if you want the model to progress the orchestrator's quality gate asset has to run.
+The pipeline is designed to accommodate for runs that happen outside the orchestrator, which can still provide a better model than the current one being tested and all the orchestrated ones. This means that the MLflow instance can be pointed to by runs without the need for the orchestrator to be aware of it. At some point, however, if you want the model to progress the orchestrator's quality gate asset has to run.
+
+## Main Features
+
+* **Data as a first-class citizen**: ML does not just require code to run, a change in training data can make a big difference, that's why a relevant portion of the code is dedicate to data versioning (LakeFS + Query hashing) and model lineage so it's always visible what data a model was trained on.
+* **Manifest-driven dataset contract** with filesystem/LakeFS storage support: a dataset of images and tabular data is always accompanied by a detailed manifest to be able to rebuild data entirely.
+* **Dagster orchestration** for dataset generation, training, model quality gates and model alias promotion.
+* **MLflow experiment tracking and model registry** integration with tracking of code commits the model came from.
+* **Multimodal PyTorch model** with tabular and CXR image branches.
+* **Nix-based** environment for greater reproducibility.
+
+> Note: not using tools like `uv2nix` to lock python dependencies (yet) but the good old `uv.lock` is there to help.
 
 ## Documentation
 
@@ -145,12 +155,6 @@ uv run ruff check src tests
 
 Pre-commit hooks are in place.
 
-## Data And Privacy
-
-This repository does not include MIMIC data, generated datasets, model artifacts, MLflow artifacts, or local environment files. Users must provide their own credentialed access to MIMIC-IV, MIMIC-ED, and MIMIC-CXR/MIMIC-CXR-JPG.
-
-Do not commit generated datasets, images, credentials, `.env` files, MLflow artifacts, or other potentially sensitive local outputs.
-
 ## Current Status
 
 Current features:
@@ -161,7 +165,7 @@ Current features:
 - MLflow experiment tracking.
 - Dagster quality gate assigning the `candidate` alias.
 
-The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIM-CXR-JPG, **Dicom format support is not yet in place**.
+The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIC-CXR-JPG, **Dicom format support is not yet in place** although the code correctly valitates the `.dcm` and `.dicom` extensions.
 
 ## Roadmap (let's dream big)
 
@@ -185,15 +189,15 @@ The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIM-CXR-JP
 
 * Serving and ONNX/Burn inference (Maturin + PyO3 for Rust inference engine):
     1. Add `mmim-serve` to load promoted models from MLflow by alias.
-    2. Export trained PyTorch models to ONNX and log them with `mlflow.onnx` (ONNX + pyfunc) instead of using pytorch + pyfunc (current behavior).
+    2. Export trained PyTorch models to ONNX and log them with `mlflow.onnx` (ONNX + pyfunc) in addition to using pytorch + pyfunc (current behavior).
     3. Add parity checks (quality gate!) between PyTorch, ONNX Runtime, and Burn inference: guarantees that we're running the intended model.
     4. Use Burn (ONNX) as an inference backend
 
   Python is the interface with the client and MLFlow, Rust is for the inference backend only.
 
   Advantages:
-    * CPU inference performance gain (needs benchmarking)
-    * GPU inference performance gain (needs benchmarking)
+    * CPU inference performance gain (Maybe? needs benchmarking)
+    * GPU inference performance gain (Maybe? needs benchmarking)
     * CPU/WebGPU/WASM portability
     * The inference runtime is more predictable, constrained and portable (no python dependencies for the inference backend)
 
@@ -201,3 +205,21 @@ The model is being currently developed using MIMIC-IV, MIMIC-ED and MIMIM-CXR-JP
 
 	* CLI/Desktop App takes in data and runs inference, decoupling from python.
 	* If a frontend is ever built and the model is small enough it could even run in the browser (if weights are open source) via WASM (WebGPU) without much coding effort, feasibility depends on model size, browser performance, preprocessing parity, and model artifact security.
+
+## The Role of AI in this project
+
+In a time where AI agents could complete my entire roadmap for this project in a single night and still have time to build a rocket before making me coffee, it was only used here for:
+
+* Write a fair amount of tests
+* Validate software architectures and strategies
+* Check code refactoring
+* Clarify what topics to study in more depth before using them
+* Fix typos
+* Write the README files backbone I could iterate on
+* Frustrate my humoristic vein
+
+## Data And Privacy
+
+This repository does not include MIMIC data, generated datasets, model artifacts, MLflow artifacts, or local environment files. Users must provide their own credentialed access to MIMIC-IV, MIMIC-ED, and MIMIC-CXR/MIMIC-CXR-JPG.
+
+Do not commit generated datasets, images, credentials, `.env` files, MLflow artifacts, or other potentially sensitive local outputs.
