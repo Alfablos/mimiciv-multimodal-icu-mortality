@@ -13,6 +13,7 @@ The **bare minimum** requirements are the following:
 * **MIMIC-IV** dataset: this is the primary data source.
 * **MIMIC-ED** dataset: since we're focusing on the 24 hours preceding the ICU admission much data, unavailable in the base MIMIC-IV, will be extracted from this subsidiary database. As per documentation it refers to the same identifiers for patients, stays, lab values and other data.
 * **MIMIC-CXR-JPG**: This is the primary images source for this project since working with 12-16 bits DICOM images is beyond the current possibilities. Importantly **even if you can work with full DICOM images, you need the `mimic-cxr-X.X.X-metadata.csv` file (only available under this dataset), which contains metadata valid for the MIMIC-CXR dataset as well and allows to skip computing it from raw images**.
+* a **DuckDB database** file containing the above. Refer to the [MIMIC Code repository](https://github.com/MIT-LCP/mimic-code) for a complete guide on how to build it.
 
 **Optional** dependencies are:
 
