@@ -130,7 +130,7 @@ Generator/LakeFS variables:
 | `MMIM_GENERATOR_DATASET_VERSION` | Dataset version, defaulting to the generator default. |
 | `MMIM_GENERATOR_BUILD_ID` | Build id used in LakeFS branch names. |
 | `LAKEFS_URL` | Enables LakeFS upload/load when set. |
-| `LAKEFS_ACCESS_KEY_ID`, `LAKEFS_SECRET_ACCESS_KEY`, `LAKEFS_REPOSITORY` | Required when LakeFS is enabled. |
+| `LAKEFS_ACCESS_KEY_ID`, `LAKEFS_SECRET_ACCESS_KEY`, `LAKEFS_REPOSITORY` | Required when using LakeFS. |
 
 Trainer/MLflow variables:
 

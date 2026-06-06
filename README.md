@@ -6,9 +6,10 @@ The model is built to compare multimodal Vs tabular-only data performance at pre
 The model is NOT meant for production, this is **currently a learning project** that's all of the following:
 
 * A way to put into practice as many new learnings I did in my Machine Learning learning path as possible.
-* A way to learn MLOps coming from DevOps: I'm not focusing on Kubernetes deployment, GCP/AWS, Prometheus + Grafana (yet) since that would distract my attention from what I need to learn from scratch; the philosophy here is "to boldly go where I've never gone before", I'll later meet what I'm already familiar with halfway.
+* A way to learn MLOps coming from DevOps: I'm not focusing on Docker, Kubernetes deployment, GCP/AWS, Prometheus + Grafana (yet) since that would distract my attention from what I need to learn from scratch; the philosophy here is "to boldly go where I've never gone before", I'll later meet what I'm already familiar with halfway.
 * A Python refresh.
 * A way to figure out how far my knowledge is from what production needs and a map I'll use to fill the gap.
+* An experiment to use AI models and agents responsibly and in a fully controlled way: not a replacement to writing/understanding the codebase, only code mentoring and learning augmentation (and maybe writing some tests). Learning resources are still books and courses with the difference that topics can be identified in a more focused way and priorities can be better planned.
 
 A small disclaimer: although I used to attend Medical School and was close to graduating when I had to leave, intensive care and its recent findings and literature are something I can't say I'm familiar with, so should this project reach a good level from other point of views, it would at least need a specialist to bring it closer to production.
 
@@ -68,7 +69,7 @@ The pipeline is designed to accommodate for runs that happen outside the orchest
 * **Multimodal PyTorch model** with tabular and CXR image branches.
 * **Nix-based** environment for greater reproducibility.
 
-> Note: not using tools like `uv2nix` to lock python dependencies (yet) but the good old `uv.lock` is there to help.
+> Note: not using tools like `uv2nix` to lock python dependencies yet but the good old `uv.lock` is there to help for the moment.
 
 ## Documentation
 
@@ -221,3 +222,5 @@ In a time where AI agents could complete my entire roadmap for this project in a
 * Fixing typos
 * Writing the README files backbone I could iterate on
 * Contain my humoristic vein
+
+There's no point in rejecting this technology, neither is there in handing off coding completely to only focus on domain knowledge (which we could be tempted to hand off too): my opinion, backed from current research, is that we're not yet to a point where models + agents are proficient at writing code so, even I don't consider myself an expert python developer, it's still worth having complete awareness of the codebase instead of only inspecting problematic code when an issue arises.

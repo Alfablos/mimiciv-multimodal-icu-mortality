@@ -194,7 +194,7 @@ LakeFS manifests are also supported:
 uv run mmim-trainer train --manifest-uri lakefs://<repo>/<ref>/manifest.json
 ```
 
-Useful environment variables:
+### Configuration and Hyperparameters Tuning via environment variables
 
 | Variable | Default | Description |
 |---|---|---|
@@ -208,5 +208,7 @@ Useful environment variables:
 | `MMIM_TRAINER_DATASET_SHUFFLE` | `true` | Whether to shuffle the training dataset. |
 | `MLFLOW_TRACKING_URI` | local sqlite DB | MLflow tracking backend. |
 | `MLFLOW_EXPERIMENT_NAME` | `Multimodal ICU mortality` | MLflow experiment name. |
+| `MLFLOW_TRACKING_USERNAME` | None | MLflow basic auth username. |
+| `MLFLOW_TRACKING_PASSWORD` | None | MLflow basic auth password. |
 
 For Dagster execution, use the orchestrator pipeline instead of calling the trainer directly.
