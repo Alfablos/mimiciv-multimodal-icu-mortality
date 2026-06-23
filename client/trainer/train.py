@@ -1,4 +1,7 @@
-from mmim.generator.manifest import ManifestV1
+from collections.abc import Callable
+
+from matplotlib.figure import Figure
+
 from mmim.store.filesystem import FilesystemReadOnlyStore
 from mmim.trainer.dataset_utils import (
     ParsedDataset,
@@ -11,7 +14,6 @@ from datetime import datetime, UTC
 
 import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve, average_precision_score
-import mlflow
 import mlflow.pytorch
 
 import torch.cuda
@@ -55,6 +57,38 @@ if model_selection_metric not in VALID_MODEL_SELECTION_METRICS:
 type TrainStatus = Literal["completed", "interrupted", "failed"]
 
 
+class Artifact(BaseModel):
+    name: str
+    kind: Literal["image", "figure", "json", "text", "binary"]
+    data: Any
+    filename: str
+
+
+def perform_gradcam(
+    images: Tensor,
+    tabs: Tensor,
+    model: Fusion,
+) -> list[Figure]:
+    figs: list[Figure] = list()
+    model_was_training = model.training
+    model.eval()
+    for i in range(min(3, images.size(0))):
+        image_t = images[i : i + 1]  # so it stays a 4D tensor
+        tab_t = tabs[i : i + 1]
+        figs.append(
+            grad_cam(
+                model=model,
+                image_tensor=image_t,
+                tab_tensor=tab_t,
+                transform_images=False,  # they've already transformed by the trining loop!
+            )
+        )
+
+    if model_was_training:
+        model.train()
+    return figs
+
+
 class LoggedModel(BaseModel):
     model: Any
     epoch: int
@@ -66,58 +100,13 @@ class LoggedModel(BaseModel):
     train_end_time: str
     selection_metric: str
     selection_metric_value: float
+    get_artifacts: Callable[[], list[Artifact]]
 
 
 class TrainLoopResult(BaseModel):
     start_time: str
     end_time: str
     train_status: TrainStatus
-
-
-class TrainingResult(BaseModel):
-    dataset_manifest: ManifestV1
-    train_results: TrainLoopResult
-    run_id: str
-
-
-def is_better_score(
-    current: float, best: float | None, mode: Literal["lower", "higher"]
-):
-    if best is None:
-        return True
-
-    if mode == "higher":
-        return current > best
-
-    return current < best
-
-
-def upload_gradcam(
-    images: Tensor,
-    tabs: Tensor,
-    model: Fusion,
-    epoch_n: int,
-    purpose: Literal["train", "val"],
-):
-    model_was_training = model.training
-    model.eval()
-    try:  # if anything fails the model is back to training mode
-        for i in range(min(3, images.size(0))):
-            image_t = images[i : i + 1]  # so it stays a 4D tensor
-            tab_t = tabs[i : i + 1]
-            fig = grad_cam(
-                model=model,
-                image_tensor=image_t,
-                tab_tensor=tab_t,
-                transform_images=False,  # they've already transformed by the trining loop!
-            )
-            mlflow.log_figure(
-                figure=fig,
-                artifact_file=f"gradcam/epoch_{epoch_n:03d}/{purpose}_{i}.png",
-            )
-    finally:
-        if model_was_training:
-            model.train()
 
 
 def train(
@@ -128,7 +117,7 @@ def train(
     train_loader: DataLoader,
     val_loader: DataLoader,
     verbose: bool = False,
-) -> Generator[LoggedModel, None, TrainLoopResult]:
+) -> Generator[LoggedModel, bool, TrainLoopResult]:
     cuda = torch.cuda.is_available()
     device = "cuda" if cuda else "cpu"
     assert device in ["cuda", "cpu"]
@@ -173,17 +162,6 @@ def train(
             end_time_str = datetime.now(UTC).strftime("%Y%m%d_%H%M")
             mean_loss = float(np.mean(losses))
 
-            # print("Sending training metrics and artifacts to mlflow")
-            # mlflow.log_metric("train_loss", mean_loss, step=epoch)
-            #
-            # upload_gradcam(
-            #     images=images,
-            #     tabs=tabs,
-            #     model=model,
-            #     epoch_n=epoch,
-            #     purpose="train",
-            # )
-
             # Only doing this on the validation set, the primary overfitting indicator
             # is the raw loss.
             metrics, val_loss = evaluate(
@@ -208,6 +186,29 @@ def train(
                 "selection_metric": model_selection_metric,
                 "selection_metric_value": best_model_selection_metric_value,
             }
+
+            def get_artifacts() -> list[Artifact]:
+                gradcam_figures = perform_gradcam(
+                    images=images,
+                    tabs=tabs,
+                    model=model,
+                    epoch_n=epoch,
+                    purpose="train",
+                )
+                artifacts: list[Artifact] = []
+
+                for i, fig in enumerate(gradcam_figures):
+                    name = f"{start_time_str}_gradcam_{i}"
+                    artifacts.append(
+                        Artifact(
+                            name=name,
+                            kind="figure",
+                            data=fig,
+                            filename=f"gradcam/epoch_{epoch:03d}/train_{i}.png",
+                        )
+                    )
+                return artifacts
+
             yield LoggedModel(
                 model=model,
                 epoch=epoch,
@@ -219,6 +220,7 @@ def train(
                 train_end_time=end_time_str,
                 selection_metric=model_selection_metric,
                 selection_metric_value=best_model_selection_metric_value,
+                get_artifacts=get_artifacts,
             )
 
         train_status = "completed"
@@ -346,7 +348,7 @@ def start_train(
     hyperparameters: Hyperparameters,
     working_directory: str = "./out",
     verbose: bool = False,
-) -> TrainingResult:
+) -> TrainLoopResult:
     if hyperparameters.train_limit != 1.0:
         print(
             f"WARNING: train_limit is set to {hyperparameters.train_limit}, make sure loss_pos_weight is still valid."
@@ -409,7 +411,7 @@ def start_train(
 
     optimizer = AdamW(model.parameters(), lr=hyperparameters.learning_rate)
 
-    train_gen = train(
+    train_gen: Generator[LoggedModel, bool, TrainLoopResult] = train(
         model=model,
         loss_fn=loss_fn,
         optimizer=optimizer,
@@ -423,6 +425,9 @@ def start_train(
         try:
             m = next(train_gen)
             print("Current train loss:" + str(m.train_loss))
+            # Placeholder: True will be sent if the model needs to be logged
+            if m.epoch % 2 == 0:
+                train_gen.send(True)
 
         except StopIteration as e:
             return e.value

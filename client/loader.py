@@ -1,15 +1,11 @@
-from attr import dataclass
+from typing import Generator, Callable
 
-
-@dataclass
-class TResult:
-    start_time: str
-    end_time: str
-    train_status: str
+from config import Hyperparameters
+from train import LoggedModel, TrainLoopResult
 
 
 def get_hyperparameters() -> dict[str, int | float | str]:
-    pass
+    return Hyperparameters().model_dump()
 
 
 def get_dataset() -> str:
@@ -18,4 +14,4 @@ def get_dataset() -> str:
 
 def get_trainer(
     dataset: str, hyperparameters: dict[str, int | float], working_directory: str | None
-) -> TResult: ...
+) -> Callable[[str], Generator[LoggedModel, bool, TrainLoopResult]]: ...
