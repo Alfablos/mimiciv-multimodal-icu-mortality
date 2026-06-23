@@ -16,23 +16,9 @@
         pkgs:
         with pkgs;
         lib.makeLibraryPath [
-          linuxPackages.nvidiaPackages.latest
+          # linuxPackages.nvidiaPackages.latest
+          "/run/opengl-driver" # makeLibraryPath will add "/lib"
           stdenv.cc.cc
-          cudaPackages.libcutensor
-          cudaPackages.libcublas
-          cudaPackages.libcusolver
-          cudaPackages.libcufft
-          cudaPackages.libcufile
-          cudaPackages.libcurand
-          cudaPackages.libcusparse
-          cudaPackages.cuda_nvrtc
-          cudaPackages.cudatoolkit
-          cudaPackages.cuda_cudart
-          cudaPackages.cuda_nvtx
-          cudaPackages.cuda_cupti
-          cudaPackages.cuda_nvrtc
-          cudaPackages.cudnn
-          cudaPackages.nccl
         ];
 
       forAllSystems =
