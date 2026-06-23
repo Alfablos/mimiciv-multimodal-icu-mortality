@@ -16,13 +16,13 @@ def sha256str(text: str) -> str:
 
 
 def infer_images_extension(path: str, formats: list[str]) -> str | None:
-    for format in formats:
-        images = Path(path).glob(f"**/*.{format}", case_sensitive=False)
+    for format_ in formats:
+        images = Path(path).glob(f"**/*.{format_}", case_sensitive=False)
         try:
             # Even one image in that format makes the function
             # return that format
             _ = next(images)
-            return format
+            return format_
         except StopIteration:
             continue
 

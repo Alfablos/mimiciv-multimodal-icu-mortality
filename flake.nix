@@ -12,11 +12,27 @@
       pythonVersion = "3.13";
       pythonPackage = "python${lib.strings.replaceString "." "" pythonVersion}";
 
-      mkLibraryPath = pkgs:
+      mkLibraryPath =
+        pkgs:
         with pkgs;
         lib.makeLibraryPath [
-          linuxPackages.nvidia_x11
+          linuxPackages.nvidiaPackages.latest
           stdenv.cc.cc
+          cudaPackages.libcutensor
+          cudaPackages.libcublas
+          cudaPackages.libcusolver
+          cudaPackages.libcufft
+          cudaPackages.libcufile
+          cudaPackages.libcurand
+          cudaPackages.libcusparse
+          cudaPackages.cuda_nvrtc
+          cudaPackages.cudatoolkit
+          cudaPackages.cuda_cudart
+          cudaPackages.cuda_nvtx
+          cudaPackages.cuda_cupti
+          cudaPackages.cuda_nvrtc
+          cudaPackages.cudnn
+          cudaPackages.nccl
         ];
 
       forAllSystems =
@@ -36,11 +52,14 @@
         noCuda = self.devShells.${pkgs.stdenv.hostPlatform.system}.template false;
         cuda = self.devShells.${pkgs.stdenv.hostPlatform.system}.template true;
         default = self.devShells.${pkgs.stdenv.hostPlatform.system}.cuda;
-        template = cuda:
+        template =
+          cuda:
           let
-            python = pkgs.${pythonPackage}.withPackages (pp: with pp; [
-              pytest
-            ]);
+            python = pkgs.${pythonPackage}.withPackages (
+              pp: with pp; [
+                pytest
+              ]
+            );
           in
           pkgs.mkShell {
             packages = with pkgs; [

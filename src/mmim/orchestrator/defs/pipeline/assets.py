@@ -80,6 +80,7 @@ def _ensure_registered_model(c: MlflowClient) -> RegisteredModel:
     return registered_model
 
 
+# Remove, only call build()
 @dg.asset
 def dataset_manifest(
     context: dg.AssetExecutionContext, config: DatasetManifestConfig
@@ -128,7 +129,7 @@ def training_run(
     config: TrainingRunConfig,
 ) -> TrainingResult:
     ds_config = parsed_dataset_from_manifest(dataset_manifest.manifest)
-    training_result = start_train(
+    training_result: TrainingResult = start_train(
         dataset_config=ds_config,
         hyperparameters=Hyperparameters(
             batch_size=config.batch_size,

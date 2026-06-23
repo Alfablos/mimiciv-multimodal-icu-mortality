@@ -1790,6 +1790,7 @@ dependencies = [
     { name = "lakefs" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "torchvision" },
 ]
 
 [package.optional-dependencies]
@@ -1835,6 +1836,7 @@ requires-dist = [
     { name = "scikit-learn", marker = "extra == 'generator'", specifier = ">=1.8.0" },
     { name = "scikit-learn", marker = "extra == 'trainer'", specifier = ">=1.8.0" },
     { name = "torch", marker = "extra == 'trainer'", specifier = ">=2.11.0" },
+    { name = "torchvision", specifier = ">=0.26.0" },
     { name = "torchvision", marker = "extra == 'trainer'", specifier = ">=0.26.0" },
 ]
 provides-extras = ["generator", "trainer", "orchestrator"]

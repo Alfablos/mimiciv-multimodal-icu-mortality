@@ -100,7 +100,7 @@ def log_model(
     float_val_loss = float(val_loss)  # converts np.float64
     model_name = f"{experiment_family}@{train_start_time}_e{epoch}"
     best_model_selection_metric_value = getattr(metrics, model_selection_metric)
-    model_metadata = {
+    model_metadata: dict[str, str | int | float] = {
         "epoch": epoch,
         "loss": float_val_loss,
         "auroc": metrics.AUROC,

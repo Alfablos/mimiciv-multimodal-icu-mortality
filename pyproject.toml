@@ -8,6 +8,7 @@ dependencies = [
     "lakefs>=0.16.0", # due to mlflow
     "pandas<=3.0",
     "pydantic>=2.13.2",
+    "torchvision>=0.26.0",
 ]
 
 [project.optional-dependencies]
