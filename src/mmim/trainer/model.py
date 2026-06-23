@@ -1,4 +1,4 @@
-from typing import Protocol, Any, Literal, Self, TypeVar, Callable, Generator
+from typing import Protocol, Any, Literal, Self, TypeVar, Callable, Generator, Mapping
 
 
 class Artifact(Protocol):
@@ -12,7 +12,7 @@ class Artifact(Protocol):
     def filename(self) -> str: ...
 
 
-class Loggable(Protocol):
+class TrainingStep(Protocol):
     @property
     def model(self) -> Any: ...
 
@@ -20,10 +20,10 @@ class Loggable(Protocol):
     def epoch(self) -> int: ...
 
     @property
-    def metrics(self) -> dict[str, int | float]: ...
+    def metrics(self) -> Mapping[str, int | float]: ...
 
     @property
-    def metadata(self) -> dict[str, int | float | str]: ...
+    def metadata(self) -> Mapping[str, int | float | str]: ...
 
     @property
     def val_loss(self) -> float: ...
@@ -104,7 +104,7 @@ def get_dataset[D]() -> DatasetRef[D]: ...
 
 # The platform can autonomously start training jobs
 def get_trainer[D]() -> Callable[
-    [DatasetRef[D], Hyperparameters], Generator[Loggable, bool, TrainingSummary]
+    [DatasetRef[D], Hyperparameters], Generator[TrainingStep, bool, TrainingSummary]
 ]: ...
 
 
