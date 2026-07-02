@@ -23,7 +23,10 @@ class TrainingStep(Protocol):
     def metrics(self) -> Mapping[str, int | float]: ...
 
     @property
-    def metadata(self) -> Mapping[str, int | float | str]: ...
+    def metadata(self) -> Mapping[str, int | float | str] | None: ...
+
+    @property
+    def tags(self) -> Mapping[str, int | float | str] | None: ...
 
     @property
     def val_loss(self) -> float: ...
@@ -51,6 +54,7 @@ class TrainingStep(Protocol):
     # the model to be in `eval`: be sure to pass a deep clone or
     # do not use the model while gradcam is being performed
     # TODO: handle this better.
+    @property
     def get_artifacts(self) -> Callable[[], list[Artifact]]: ...
 
 
@@ -96,23 +100,6 @@ class DatasetRef[D](Protocol):
     def inner(self) -> D: ...
 
 
-## Expected from the client:
-# The platform can expose the possibility to modify hyperparameters maybe via a UI
-def get_hyperparameters() -> Hyperparameters: ...
-
-
-# The platform owns the dataset but doesn't know how to use it: it only
-# cares about being able to locate it and register its manifest
-def get_dataset[D]() -> DatasetRef[D]: ...
-
-
-# The platform can autonomously start training jobs
-def get_trainer[D]() -> Callable[
-    [DatasetRef[D], Hyperparameters], Generator[TrainingStep, bool, TrainingSummary]
-]: ...
-
-
-# Note: Generator[Loggable, bool, TrainingSummary] means:
-# - The trainer has to yield a Loggable on each iteration
-# - The platform SENDS True IF THE MODEL IS WORTH LOGGING
-# - The return value is a TrainingSummary (TODO: really needed??)
+type Trainer[D] = Callable[
+    [DatasetRef[D], Hyperparameters], Generator[TrainingStep, None, TrainingSummary]
+]
